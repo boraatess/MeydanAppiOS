@@ -1,0 +1,550 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0F2D478E2E23FF7100A01DA9 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = 0F2D478D2E23FF7100A01DA9 /* GoogleSignIn */; };
+		0F2D47902E23FF7100A01DA9 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 0F2D478F2E23FF7100A01DA9 /* GoogleSignInSwift */; };
+		0F4D7FBE2E3BBED800547312 /* Alamofire in Frameworks */ = {isa = PBXBuildFile; productRef = 0F4D7FBD2E3BBED800547312 /* Alamofire */; };
+		0F6FE9802E47E160003775BD /* KeychainAccess in Frameworks */ = {isa = PBXBuildFile; productRef = 0F6FE97F2E47E160003775BD /* KeychainAccess */; };
+		0FA1B2C42E5C000000AD0B01 /* GoogleMobileAds in Frameworks */ = {isa = PBXBuildFile; productRef = 0FA1B2C32E5C000000AD0B01 /* GoogleMobileAds */; };
+		332584CD2FBFB8B400AF5060 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = 332584CC2FBFB8B400AF5060 /* FirebaseAnalytics */; };
+		332584CF2FBFB8B400AF5060 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = 332584CE2FBFB8B400AF5060 /* FirebaseAuth */; };
+		332584D12FBFB8B400AF5060 /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = 332584D02FBFB8B400AF5060 /* FirebaseCore */; };
+		332584D32FBFB8B400AF5060 /* FirebaseCrashlytics in Frameworks */ = {isa = PBXBuildFile; productRef = 332584D22FBFB8B400AF5060 /* FirebaseCrashlytics */; };
+		332584D52FBFB8B400AF5060 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = 332584D42FBFB8B400AF5060 /* FirebaseFirestore */; };
+		332584D72FBFB8B400AF5060 /* FirebaseInAppMessaging-Beta in Frameworks */ = {isa = PBXBuildFile; productRef = 332584D62FBFB8B400AF5060 /* FirebaseInAppMessaging-Beta */; };
+		332584D92FBFB8B400AF5060 /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = 332584D82FBFB8B400AF5060 /* FirebaseMessaging */; };
+		332584DB2FBFB8B400AF5060 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = 332584DA2FBFB8B400AF5060 /* FirebaseStorage */; };
+		332584DE2FBFBC0F00AF5060 /* FirebaseDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = 332584DD2FBFBC0F00AF5060 /* FirebaseDatabase */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		0F4D7FC22E3BC4FA00547312 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		0FC5D5562E22E8F2001E5599 /* Meydan-IOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Meydan-IOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		0FFFB4AD2E3AD82A00207454 /* Exceptions for "Meydan-IOS" folder in "Meydan-IOS" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Sources/Info.plist,
+			);
+			target = 0FC5D5552E22E8F2001E5599 /* Meydan-IOS */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		0FC5D5582E22E8F2001E5599 /* Meydan-IOS */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				0FFFB4AD2E3AD82A00207454 /* Exceptions for "Meydan-IOS" folder in "Meydan-IOS" target */,
+			);
+			path = "Meydan-IOS";
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		0FC5D5532E22E8F2001E5599 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				332584DE2FBFBC0F00AF5060 /* FirebaseDatabase in Frameworks */,
+				0F6FE9802E47E160003775BD /* KeychainAccess in Frameworks */,
+				332584CF2FBFB8B400AF5060 /* FirebaseAuth in Frameworks */,
+				0F4D7FBE2E3BBED800547312 /* Alamofire in Frameworks */,
+				0FA1B2C42E5C000000AD0B01 /* GoogleMobileAds in Frameworks */,
+				0F2D478E2E23FF7100A01DA9 /* GoogleSignIn in Frameworks */,
+				332584D12FBFB8B400AF5060 /* FirebaseCore in Frameworks */,
+				332584DB2FBFB8B400AF5060 /* FirebaseStorage in Frameworks */,
+				332584D52FBFB8B400AF5060 /* FirebaseFirestore in Frameworks */,
+				332584D32FBFB8B400AF5060 /* FirebaseCrashlytics in Frameworks */,
+				332584CD2FBFB8B400AF5060 /* FirebaseAnalytics in Frameworks */,
+				0F2D47902E23FF7100A01DA9 /* GoogleSignInSwift in Frameworks */,
+				332584D92FBFB8B400AF5060 /* FirebaseMessaging in Frameworks */,
+				332584D72FBFB8B400AF5060 /* FirebaseInAppMessaging-Beta in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0FC5D54D2E22E8F2001E5599 = {
+			isa = PBXGroup;
+			children = (
+				0FC5D5582E22E8F2001E5599 /* Meydan-IOS */,
+				332584DC2FBFBC0E00AF5060 /* Frameworks */,
+				0FC5D5572E22E8F2001E5599 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		0FC5D5572E22E8F2001E5599 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				0FC5D5562E22E8F2001E5599 /* Meydan-IOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		332584DC2FBFBC0E00AF5060 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0FC5D5552E22E8F2001E5599 /* Meydan-IOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0FC5D5612E22E8F4001E5599 /* Build configuration list for PBXNativeTarget "Meydan-IOS" */;
+			buildPhases = (
+				0FC5D5522E22E8F2001E5599 /* Sources */,
+				0FC5D5532E22E8F2001E5599 /* Frameworks */,
+				0FC5D5542E22E8F2001E5599 /* Resources */,
+				0F4D7FC22E3BC4FA00547312 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				0FC5D5582E22E8F2001E5599 /* Meydan-IOS */,
+			);
+			name = "Meydan-IOS";
+			packageProductDependencies = (
+				0F2D478D2E23FF7100A01DA9 /* GoogleSignIn */,
+				0F2D478F2E23FF7100A01DA9 /* GoogleSignInSwift */,
+				0F4D7FBD2E3BBED800547312 /* Alamofire */,
+				0F6FE97F2E47E160003775BD /* KeychainAccess */,
+				332584CC2FBFB8B400AF5060 /* FirebaseAnalytics */,
+				332584CE2FBFB8B400AF5060 /* FirebaseAuth */,
+				332584D02FBFB8B400AF5060 /* FirebaseCore */,
+				332584D22FBFB8B400AF5060 /* FirebaseCrashlytics */,
+				332584D42FBFB8B400AF5060 /* FirebaseFirestore */,
+				332584D62FBFB8B400AF5060 /* FirebaseInAppMessaging-Beta */,
+				332584D82FBFB8B400AF5060 /* FirebaseMessaging */,
+				332584DA2FBFB8B400AF5060 /* FirebaseStorage */,
+				332584DD2FBFBC0F00AF5060 /* FirebaseDatabase */,
+				0FA1B2C32E5C000000AD0B01 /* GoogleMobileAds */,
+			);
+			productName = "Meydan-IOS";
+			productReference = 0FC5D5562E22E8F2001E5599 /* Meydan-IOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		0FC5D54E2E22E8F2001E5599 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1640;
+				LastUpgradeCheck = 1640;
+				TargetAttributes = {
+					0FC5D5552E22E8F2001E5599 = {
+						CreatedOnToolsVersion = 16.4;
+					};
+				};
+			};
+			buildConfigurationList = 0FC5D5512E22E8F2001E5599 /* Build configuration list for PBXProject "Meydan-IOS" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 0FC5D54D2E22E8F2001E5599;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				0F2D478C2E23FF7100A01DA9 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+				0F4D7FBC2E3BBED800547312 /* XCRemoteSwiftPackageReference "Alamofire" */,
+				0F6FE97E2E47E160003775BD /* XCRemoteSwiftPackageReference "KeychainAccess" */,
+				332584CB2FBFB8B400AF5060 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				0FA1B2C22E5C000000AD0B01 /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 0FC5D5572E22E8F2001E5599 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0FC5D5552E22E8F2001E5599 /* Meydan-IOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		0FC5D5542E22E8F2001E5599 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		0FC5D5522E22E8F2001E5599 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0FC5D55F2E22E8F4001E5599 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = T56JGFA2A3;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		0FC5D5602E22E8F4001E5599 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = T56JGFA2A3;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		0FC5D5622E22E8F4001E5599 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Meydan-IOS/Sources/Meydan-IOS.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 9;
+				DEVELOPMENT_TEAM = 4KQ7J32288;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Meydan-IOS/Sources/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Meydan;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.juniors.meydanapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		0FC5D5632E22E8F4001E5599 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "Meydan-IOS/Sources/Meydan-IOS.entitlements";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 9;
+				DEVELOPMENT_TEAM = 4KQ7J32288;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "Meydan-IOS/Sources/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Meydan;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.juniors.meydanapp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0FC5D5512E22E8F2001E5599 /* Build configuration list for PBXProject "Meydan-IOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0FC5D55F2E22E8F4001E5599 /* Debug */,
+				0FC5D5602E22E8F4001E5599 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0FC5D5612E22E8F4001E5599 /* Build configuration list for PBXNativeTarget "Meydan-IOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0FC5D5622E22E8F4001E5599 /* Debug */,
+				0FC5D5632E22E8F4001E5599 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		0F2D478C2E23FF7100A01DA9 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.0.0;
+			};
+		};
+		0F4D7FBC2E3BBED800547312 /* XCRemoteSwiftPackageReference "Alamofire" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/Alamofire/Alamofire";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.10.2;
+			};
+		};
+		0F6FE97E2E47E160003775BD /* XCRemoteSwiftPackageReference "KeychainAccess" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/kishikawakatsumi/KeychainAccess";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
+		0FA1B2C22E5C000000AD0B01 /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/googleads/swift-package-manager-google-mobile-ads";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.0.0;
+			};
+		};
+		332584CB2FBFB8B400AF5060 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.13.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		0F2D478D2E23FF7100A01DA9 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0F2D478C2E23FF7100A01DA9 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		0F2D478F2E23FF7100A01DA9 /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0F2D478C2E23FF7100A01DA9 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
+		};
+		0F4D7FBD2E3BBED800547312 /* Alamofire */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0F4D7FBC2E3BBED800547312 /* XCRemoteSwiftPackageReference "Alamofire" */;
+			productName = Alamofire;
+		};
+		0F6FE97F2E47E160003775BD /* KeychainAccess */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0F6FE97E2E47E160003775BD /* XCRemoteSwiftPackageReference "KeychainAccess" */;
+			productName = KeychainAccess;
+		};
+		0FA1B2C32E5C000000AD0B01 /* GoogleMobileAds */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 0FA1B2C22E5C000000AD0B01 /* XCRemoteSwiftPackageReference "swift-package-manager-google-mobile-ads" */;
+			productName = GoogleMobileAds;
+		};
+		332584CC2FBFB8B400AF5060 /* FirebaseAnalytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 332584CB2FBFB8B400AF5060 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalytics;
+		};
+		332584CE2FBFB8B400AF5060 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 332584CB2FBFB8B400AF5060 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		332584D02FBFB8B400AF5060 /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 332584CB2FBFB8B400AF5060 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		332584D22FBFB8B400AF5060 /* FirebaseCrashlytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 332584CB2FBFB8B400AF5060 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCrashlytics;
+		};
+		332584D42FBFB8B400AF5060 /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 332584CB2FBFB8B400AF5060 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+		332584D62FBFB8B400AF5060 /* FirebaseInAppMessaging-Beta */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 332584CB2FBFB8B400AF5060 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = "FirebaseInAppMessaging-Beta";
+		};
+		332584D82FBFB8B400AF5060 /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 332584CB2FBFB8B400AF5060 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
+		};
+		332584DA2FBFB8B400AF5060 /* FirebaseStorage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 332584CB2FBFB8B400AF5060 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseStorage;
+		};
+		332584DD2FBFBC0F00AF5060 /* FirebaseDatabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 332584CB2FBFB8B400AF5060 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseDatabase;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 0FC5D54E2E22E8F2001E5599 /* Project object */;
+}
