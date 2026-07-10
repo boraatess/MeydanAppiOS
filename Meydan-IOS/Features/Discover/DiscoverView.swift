@@ -26,6 +26,7 @@ struct DiscoverView: View {
     @State private var isSearchActive = false
     @State private var searchFilter: SearchFilterType = .people
     @State private var showChatView = false
+    @State private var selectedChatRoom: Room?
     @StateObject private var searchViewModel = SearchViewModel()
     
     // Auto-scroll
@@ -103,7 +104,8 @@ struct DiscoverView: View {
                                 withAnimation { showOptions = true }
                             }
                         },
-                        onRoomJoinTap: { _ in
+                        onRoomJoinTap: { room in
+                            selectedChatRoom = room
                             showChatView = true
                         }
                     )
@@ -131,7 +133,19 @@ struct DiscoverView: View {
             }
             .navigationBarHidden(true)
             .fullScreenCover(isPresented: $showChatView) {
-                ChatView()
+                if let room = selectedChatRoom {
+                    ChatView(
+                        roomId: room.roomId,
+                        roomTitle: room.title,
+                        roomOwnerUsername: room.creatorName
+                    )
+                } else if let post = selectedPost {
+                    ChatView(
+                        roomId: post.roomId,
+                        roomTitle: post.title,
+                        roomOwnerUsername: post.creatorUsername
+                    )
+                }
             }
             .navigationDestination(for: ProfileNavigation.self) { destination in
                 switch destination {
@@ -283,6 +297,11 @@ struct DiscoverView: View {
                                 )
                             )
                         },
+                        onJoinTap: {
+                            selectedChatRoom = nil
+                            selectedPost = post
+                            showChatView = true
+                        },
                         onOptionsTap: {
                             selectedPost = post
                             withAnimation { showOptions = true }
@@ -302,6 +321,7 @@ struct DiscoverView: View {
 struct DiscoverCardContent: View {
     let post: DiscoverPost
     let onProfileTap: () -> Void
+    let onJoinTap: () -> Void
     let onOptionsTap: () -> Void
     
     var body: some View {
@@ -436,7 +456,7 @@ struct DiscoverCardContent: View {
                 .buttonStyle(.plain)
                 .padding(.horizontal, 16)
                 
-                Button(action: {}) {
+                Button(action: onJoinTap) {
                     Text("Sohbete Katıl")
                         .font(.manrope(.bold, size: 16))
                         .foregroundColor(.white)

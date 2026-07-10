@@ -75,7 +75,8 @@ struct HomeView: View {
                             selectedRoom = room
                             withAnimation { showOptions = true }
                         },
-                        onRoomJoinTap: { _ in
+                        onRoomJoinTap: { room in
+                            selectedRoom = room
                             showChatView = true
                         }
                     )
@@ -96,6 +97,7 @@ struct HomeView: View {
                                         withAnimation { showOptions = true }
                                     }, onJoinTap: {
                                         print("🚀 SOHBETE KATIL TAPPED!")
+                                        selectedRoom = room
                                         showChatView = true
                                     }, isNotificationSubscribed: pushManager.isSubscribedToRoom(room.roomId), onNotificationTap: {
                                         viewModel.toggleRoomNotification(roomId: room.roomId)
@@ -137,7 +139,13 @@ struct HomeView: View {
                 }
             }
             .fullScreenCover(isPresented: $showChatView) {
-                ChatView()
+                if let room = selectedRoom {
+                    ChatView(
+                        roomId: room.roomId,
+                        roomTitle: room.title,
+                        roomOwnerUsername: room.creatorName
+                    )
+                }
             }
             .navigationDestination(for: ProfileNavigation.self) { destination in
                 switch destination {

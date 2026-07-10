@@ -54,14 +54,13 @@ struct NotificationView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            Color.clear
-                .frame(width: 48, height: 48)
+        HStack(spacing: 16) {
 
             Text("Bildirimler")
                 .font(.manrope(.bold, size: 18))
                 .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
+
+            Spacer()
 
             Button(action: {
                 viewModel.markAllAsRead()
@@ -78,7 +77,7 @@ struct NotificationView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(.top, 8)
+        .padding(8)
     }
 
     private var notificationList: some View {

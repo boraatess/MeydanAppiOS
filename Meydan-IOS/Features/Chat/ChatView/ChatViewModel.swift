@@ -7,11 +7,15 @@ class ChatViewModel: ObservableObject {
     @Published var messages: [Message] = []
     // current message text in the text field
     @Published var currentMessageText: String = ""
-    
+
     // RTDB properties
     private let dbRef = Database.database().reference()
     private var messagesHandle: DatabaseHandle?
-    var roomId: String = "test_room_123" // Replace with dynamic room ID later
+    private var currentUserId = ""
+    private var currentUsername = ""
+    private var currentUserAvatar: String?
+    private var isLoadingCurrentUser = false
+    let roomId: String
     
     // Basılı tutularak seçilen mesajı saklar.
     @Published var selectedMessage: Message?
@@ -124,16 +128,26 @@ class ChatViewModel: ObservableObject {
         return Int(Double(pollVotes[index, default: 0]) / Double(total) * 100)
     }
     // Chat odasına ait bilgiler (başlık ve sahibi), header ile uyumlu tutulur
-    var roomTitle: String = "Türkiye - İspanya Maçı"
-    var roomOwnerUsername: String = "rumeysasacak"
+    let roomTitle: String
+    let roomOwnerUsername: String
     
-    init() {
+    init(
+        roomId: String = "test_room_123",
+        roomTitle: String = "Türkiye - İspanya Maçı",
+        roomOwnerUsername: String = "rumeysasacak"
+    ) {
+        self.roomId = roomId
+        self.roomTitle = roomTitle
+        self.roomOwnerUsername = roomOwnerUsername
         loadMockMessages()
     }
     
     func connectToWebSocket() {
         print("RTDB listener başlatılıyor...")
-        listenForMessages()
+        Task {
+            await loadCurrentUserIfNeeded()
+            listenForMessages()
+        }
     }
     
     func disconnectFromWebSocket() {
@@ -159,6 +173,8 @@ class ChatViewModel: ObservableObject {
                         let jsonData = try JSONSerialization.data(withJSONObject: dict)
                         var message = try JSONDecoder().decode(Message.self, from: jsonData)
                         message.id = childSnapshot.key // RTDB auto-id'sini atıyoruz
+                        message.isCurrentUser = !self.currentUserId.isEmpty
+                            && message.senderId == self.currentUserId
                         newMessages.append(message)
                     } catch {
                         print("Mesaj çözümlenemedi: \(error)")
@@ -174,7 +190,17 @@ class ChatViewModel: ObservableObject {
     // MARK: - User Actions
     
     func sendMessage() {
-        guard !currentMessageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let messageText = currentMessageText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !messageText.isEmpty else { return }
+        currentMessageText = ""
+
+        Task {
+            await loadCurrentUserIfNeeded()
+            persistMessage(text: messageText)
+        }
+    }
+
+    private func persistMessage(text: String) {
         
         // Şimdiki zamanı "HH:mm" formatında al
         let formatter = DateFormatter()
@@ -183,12 +209,15 @@ class ChatViewModel: ObservableObject {
         
         let newMessage = Message(
             id: nil,
-            text: currentMessageText,
-            authorName: nil, // `nil` olması bu mesajın mevcut kullanıcı tarafından gönderildiğini belirtir
-            authorAvatar: nil,
+            text: text,
+            senderId: currentUserId.isEmpty ? nil : currentUserId,
+            username: currentUsername.isEmpty ? nil : currentUsername,
+            authorName: currentUsername.isEmpty ? nil : currentUsername,
+            authorAvatar: currentUserAvatar,
             authorRole: .user,
             timestamp: currentTimeString,
-            createdAt: nil
+            createdAt: nil,
+            isCurrentUser: true
         )
         
         do {
@@ -201,9 +230,23 @@ class ChatViewModel: ObservableObject {
                 let roomMessagesRef = dbRef.child("rooms").child(roomId).child("messages").childByAutoId()
                 roomMessagesRef.setValue(dict)
             }
-            currentMessageText = ""
         } catch {
             print("Mesaj gönderilirken hata oluştu: \(error)")
+        }
+    }
+
+    private func loadCurrentUserIfNeeded() async {
+        guard currentUserId.isEmpty, !isLoadingCurrentUser else { return }
+        isLoadingCurrentUser = true
+        defer { isLoadingCurrentUser = false }
+
+        do {
+            let response = try await AuthService.shared.getMe()
+            currentUserId = response.user.resolvedId ?? ""
+            currentUsername = response.user.username ?? ""
+            currentUserAvatar = response.user.profile?.avatar
+        } catch {
+            print("DEBUG: Chat kullanıcı bilgisi alınamadı: \(error.localizedDescription)")
         }
     }
     
@@ -242,8 +285,8 @@ class ChatViewModel: ObservableObject {
         print("Reporting: \(message.text)")
         // Kullanıcı şikayeti için sheet aç
         reportIsStream = false
-        reportUserName = message.authorName ?? "Bilinmeyen"
-        reportUserId = message.id
+        reportUserName = message.resolvedUsername ?? "Bilinmeyen"
+        reportUserId = message.senderId
         // Menü overlay'ini kapatıp ardından sheet'i göster
         dismissMessageActions()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {

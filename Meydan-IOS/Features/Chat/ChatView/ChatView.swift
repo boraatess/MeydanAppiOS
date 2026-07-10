@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ChatView: View {
-    @StateObject private var viewModel = ChatViewModel()
+    @StateObject private var viewModel: ChatViewModel
     @StateObject private var interstitialAdManager = ChatInterstitialAdManager()
     @State private var didRequestEntryAd = false
     
@@ -15,6 +15,20 @@ struct ChatView: View {
     @Environment(\.dismiss) private var dismiss
     
     private let menuWidth: CGFloat = 220
+
+    init(
+        roomId: String = "test_room_123",
+        roomTitle: String = "Türkiye - İspanya Maçı",
+        roomOwnerUsername: String = "rumeysasacak"
+    ) {
+        _viewModel = StateObject(
+            wrappedValue: ChatViewModel(
+                roomId: roomId,
+                roomTitle: roomTitle,
+                roomOwnerUsername: roomOwnerUsername
+            )
+        )
+    }
     
     var body: some View {
         ZStack {
@@ -23,6 +37,8 @@ struct ChatView: View {
             
             VStack(spacing: 0) {
                 CustomChatHeaderView(
+                    title: viewModel.roomTitle,
+                    ownerUsername: viewModel.roomOwnerUsername,
                     onBackTapped: {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                             viewModel.showExitConfirmation = true
@@ -549,6 +565,8 @@ struct ChatView: View {
 
 // MARK: - Custom Header View
 struct CustomChatHeaderView: View {
+    let title: String
+    let ownerUsername: String
     var onBackTapped: () -> Void
     var onMoreButtonTapped: () -> Void
     
@@ -573,11 +591,11 @@ struct CustomChatHeaderView: View {
                     .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 1))
                 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Türkiye - İspanya Maçı")
+                    Text(title)
                         .font(.poppins(.semiBold, size: 15))
                         .foregroundColor(.white)
                     
-                    Text("@cicekece")
+                    Text(ownerUsername.hasPrefix("@") ? ownerUsername : "@\(ownerUsername)")
                         .font(.poppins(.regular, size: 12))
                         .foregroundColor(.white.opacity(0.75))
                 }
@@ -662,7 +680,7 @@ struct MessageBubble: View {
             
             VStack(alignment: message.isSentByUser ? .trailing : .leading, spacing: 4) {
                 // Başka kişinin mesajındaki @ isim
-                if !message.isSentByUser, let author = message.authorName {
+                if let author = message.resolvedUsername {
                     HStack(spacing: 4) {
                         
                         if message.authorRole == .chatOwner {

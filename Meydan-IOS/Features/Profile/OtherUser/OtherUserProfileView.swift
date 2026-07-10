@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct OtherUserProfileView: View {
-    
+
     @Environment(\.dismiss) private var dismiss
     @StateObject private var viewModel: OtherUserProfileViewModel
     @State private var showOptions = false
