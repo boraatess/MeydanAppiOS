@@ -11,6 +11,8 @@ struct OtherUserResponse: Decodable, Sendable {
     let status: String
     let user: MeUser
     let isFollowing: Bool?
+    let isFavorite: Bool?
+    let isBlocked: Bool?
     let shareUrl: String?
 }
 

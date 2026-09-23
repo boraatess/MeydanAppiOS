@@ -13,20 +13,21 @@ fileprivate struct ItemFramePreferenceKey: @preconcurrency PreferenceKey {
 struct DiscoverView: View {
     
     @StateObject private var viewModel: DiscoverViewModel
-    
+
     // Navigation
-    @State private var navigationPath = NavigationPath()
+    @Binding private var navigationPath: NavigationPath
     @State private var showFavorites = false
-    
+
     // Popup States
     @State private var showOptions = false
     @State private var showReportSheet = false
     @State private var selectedPost: DiscoverPost? = nil
     @State private var searchText = ""
     @State private var isSearchActive = false
-    @State private var searchFilter: SearchFilterType = .people
-    @State private var showChatView = false
-    @State private var selectedChatRoom: Room?
+    @State private var selectedSearchFilter: SearchFilterType = .people
+    @State private var chatDestination: ChatDestination? = nil
+    @State private var roomAccessError: String?
+    @State private var roomAccessMessage: String?
     @StateObject private var searchViewModel = SearchViewModel()
     
     // Auto-scroll
@@ -51,7 +52,12 @@ struct DiscoverView: View {
     
     // allow injecting a view model for previews/tests and toggling auto-scroll
     // default startWithAutoScroll = true so auto-paging is enabled unless caller opts out
-    init(viewModel: DiscoverViewModel? = nil, startWithAutoScroll: Bool = true) {
+    init(
+        navigationPath: Binding<NavigationPath> = .constant(NavigationPath()),
+        viewModel: DiscoverViewModel? = nil,
+        startWithAutoScroll: Bool = true
+    ) {
+        _navigationPath = navigationPath
         _viewModel = StateObject(wrappedValue: viewModel ?? DiscoverViewModel())
         // debugDisableAutoScroll is true when startWithAutoScroll == false
         _debugDisableAutoScroll = State(initialValue: !startWithAutoScroll)
@@ -64,9 +70,7 @@ struct DiscoverView: View {
                 VStack(spacing: 8) {
                     headerView
 
-                    if isSearchActive {
-                        SearchFilterChipsView(selectedFilter: $searchFilter)
-                    } else {
+                    if !isSearchActive {
                         categoryView
                     }
                 }
@@ -74,10 +78,10 @@ struct DiscoverView: View {
 
                 if isSearchActive {
                     SearchResultsView(
-                        filter: searchFilter,
                         searchText: searchText,
                         people: searchViewModel.people,
                         rooms: searchViewModel.rooms,
+                        selectedFilter: $selectedSearchFilter,
                         isLoading: searchViewModel.isLoading,
                         errorMessage: searchViewModel.errorMessage,
                         onPersonProfileTap: { person in
@@ -89,31 +93,35 @@ struct DiscoverView: View {
                                 )
                             )
                         },
+                        onRoomJoinTap: { room in
+                            openChatIfPossible(ChatDestination(room: room))
+                        },
                         onRoomProfileTap: { room in
                             navigationPath.append(
                                 ProfileNavigation.otherProfile(
                                     userId: room.creatorUserId,
-                                    name: room.creatorName,
-                                    username: room.creatorName
+                                    name: room.creatorFullName,
+                                    username: room.creatorUsername
                                 )
                             )
-                        },
-                        onRoomOptionsTap: { room in
-                            if let post = viewModel.posts.first(where: { $0.roomId == room.roomId }) {
-                                selectedPost = post
-                                withAnimation { showOptions = true }
-                            }
-                        },
-                        onRoomJoinTap: { room in
-                            selectedChatRoom = room
-                            showChatView = true
                         }
                     )
+                } else if viewModel.isLoading && viewModel.posts.isEmpty {
+                    Spacer(minLength: 0)
+                    ProgressView()
+                        .tint(.white)
+                    Spacer(minLength: 0)
+                } else if let errorMessage = viewModel.errorMessage, viewModel.posts.isEmpty {
+                    DiscoverRoomsErrorView(message: errorMessage) {
+                        viewModel.fetchExploreData()
+                        viewModel.fetchCategories()
+                    }
+                    .padding(.horizontal, 16)
                 } else {
                     scrollViewArea
                 }
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 12)
             .background(Color.background.ignoresSafeArea(edges: .bottom))
             .onChange(of: searchText) { newValue in
                 guard isSearchActive else { return }
@@ -132,20 +140,31 @@ struct DiscoverView: View {
                 }
             }
             .navigationBarHidden(true)
-            .fullScreenCover(isPresented: $showChatView) {
-                if let room = selectedChatRoom {
-                    ChatView(
-                        roomId: room.roomId,
-                        roomTitle: room.title,
-                        roomOwnerUsername: room.creatorName
-                    )
-                } else if let post = selectedPost {
-                    ChatView(
-                        roomId: post.roomId,
-                        roomTitle: post.title,
-                        roomOwnerUsername: post.creatorUsername
-                    )
+            .overlay(alignment: .top) {
+                if let roomAccessMessage {
+                    TransientToastView(message: roomAccessMessage)
+                        .padding(.top, 12)
                 }
+            }
+            .alert("Sohbete Katılamıyorsunuz", isPresented: Binding(
+                get: { roomAccessError != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        roomAccessError = nil
+                    }
+                }
+            )) {
+                Button("Tamam", role: .cancel) { roomAccessError = nil }
+            } message: {
+                Text(roomAccessError ?? "")
+            }
+            .fullScreenCover(item: $chatDestination) { destination in
+                ChatView(
+                    roomId: destination.roomId,
+                    roomTitle: destination.roomTitle,
+                    roomOwnerUsername: destination.roomOwnerUsername,
+                    roomOwnerUserId: destination.roomOwnerUserId
+                )
             }
             .navigationDestination(for: ProfileNavigation.self) { destination in
                 switch destination {
@@ -159,6 +178,7 @@ struct DiscoverView: View {
                     EmptyView()
                 }
             }
+            .padding(.horizontal, 16)
             .overlay {
                 if showOptions {
                     ZStack {
@@ -269,8 +289,12 @@ struct DiscoverView: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     scrollViewContent(geometry: geometry)
                 }
+                .pullToRefresh {
+                    await viewModel.fetchExploreData()
+                    await viewModel.fetchCategories()
+                }
                 .scrollPositionCompat(id: $scrolledID)
-                .scrollDisabled(viewModel.posts.isEmpty)
+                .scrollDisabled(viewModel.filteredPosts.isEmpty)
                 .pagingScrollCompat()
             }
         }
@@ -284,35 +308,71 @@ struct DiscoverView: View {
         let cardHeight = availableHeight * 0.88
         
         return LazyVStack(spacing: 0) {
-            ForEach(viewModel.posts) { post in
-                ZStack {
-                    DiscoverCardContent(
-                        post: post,
-                        onProfileTap: {
-                            navigationPath.append(
-                                ProfileNavigation.otherProfile(
-                                    userId: post.creatorUserId,
-                                    name: post.creatorName,
-                                    username: post.creatorUsername
+            if viewModel.filteredPosts.isEmpty {
+                Text("Bu kategoride yayın bulunamadı")
+                    .font(.manrope(.medium, size: 14))
+                    .foregroundColor(.grayLight)
+                    .frame(width: geometry.size.width, height: availableHeight)
+            } else {
+                ForEach(viewModel.filteredPosts) { post in
+                    ZStack {
+                        DiscoverCardContent(
+                            post: post,
+                            onProfileTap: {
+                                navigationPath.append(
+                                    ProfileNavigation.otherProfile(
+                                        userId: post.creatorUserId,
+                                        name: post.creatorName,
+                                        username: post.creatorUsername
+                                    )
                                 )
-                            )
-                        },
-                        onJoinTap: {
-                            selectedChatRoom = nil
-                            selectedPost = post
-                            showChatView = true
-                        },
-                        onOptionsTap: {
-                            selectedPost = post
-                            withAnimation { showOptions = true }
-                        }
-                    )
-                        .frame(width: cardWidth, height: cardHeight)
-                        .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+                            },
+                            onJoinTap: {
+                                selectedPost = post
+                                openChatIfPossible(ChatDestination(post: post))
+                            },
+                            onOptionsTap: {
+                                selectedPost = post
+                                withAnimation { showOptions = true }
+                            }
+                        )
+                            .frame(width: cardWidth, height: cardHeight)
+                            .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+                    }
+                    .frame(width: geometry.size.width, height: availableHeight)
+                    .id(post.id)
                 }
-                .frame(width: geometry.size.width, height: availableHeight)
-                .id(post.id)
             }
+        }
+    }
+
+    private func openChatIfPossible(_ destination: ChatDestination) {
+        Task {
+            do {
+                let access = try await RoomAccessHelper.validateAccess(
+                    roomId: destination.roomId,
+                    roomOwnerUserId: destination.roomOwnerUserId
+                )
+                await showAccessMessageIfNeeded(access?.message)
+                chatDestination = destination
+            } catch {
+                roomAccessError = error.localizedDescription
+            }
+        }
+    }
+
+    private func showAccessMessageIfNeeded(_ message: String?) async {
+        guard let message = message?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !message.isEmpty else { return }
+
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+            roomAccessMessage = message
+        }
+
+        try? await Task.sleep(nanoseconds: 700_000_000)
+
+        withAnimation(.easeOut(duration: 0.2)) {
+            roomAccessMessage = nil
         }
     }
 }
@@ -383,23 +443,20 @@ struct DiscoverCardContent: View {
                 Spacer()
                 
                 HStack(spacing: 4) {
-                    Image(systemName: "person.fill")
-                        .font(.system(size: 10))
-                    Text("\(post.viewersCount)")
-                        .font(.manrope(.bold, size: 12))
+                    LiveViewerCountBadge(
+                        roomId: post.roomId,
+                        initialCount: post.viewersCount
+                    )
                 }
-                .foregroundColor(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color.black.opacity(0.6))
-                .cornerRadius(20)
                 
                 Button(action: onOptionsTap) {
                     Image(systemName: "ellipsis")
                         .rotationEffect(.degrees(90))
                         .foregroundColor(.white)
-                        .padding(8)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
             .padding(20)
             
@@ -452,6 +509,7 @@ struct DiscoverCardContent: View {
                             }
                         }
                     }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, 16)
@@ -465,6 +523,8 @@ struct DiscoverCardContent: View {
                         .background(Color.branding)
                         .cornerRadius(16)
                 }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
                 .padding(.horizontal, 16)
                 
             }
@@ -473,6 +533,38 @@ struct DiscoverCardContent: View {
             
             
         }
+    }
+}
+
+private struct DiscoverRoomsErrorView: View {
+    let message: String
+    let onRetry: () -> Void
+
+    var body: some View {
+        Spacer(minLength: 0)
+
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 28))
+                .foregroundColor(.branding)
+
+            Text(message)
+                .font(.manrope(.medium, size: 14))
+                .foregroundColor(.grayLight)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+
+            Button("Tekrar Dene", action: onRetry)
+                .font(.manrope(.bold, size: 14))
+                .foregroundColor(.white)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+                .background(Color.white.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .frame(maxWidth: .infinity)
+
+        Spacer(minLength: 0)
     }
 }
 

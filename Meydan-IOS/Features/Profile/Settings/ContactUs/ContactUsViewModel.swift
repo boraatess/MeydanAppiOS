@@ -20,6 +20,10 @@ class ContactUsViewModel: ObservableObject {
     }
     
     func submitSupport() async {
+        if let warning = ContentFilter.warning(for: message) {
+            errorMessage = warning
+            return
+        }
         guard !message.isEmpty else {
             errorMessage = "Lütfen bir mesaj yazınız."
             return

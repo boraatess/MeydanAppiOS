@@ -52,6 +52,12 @@
 	<array>
 		<string>remote-notification</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Profil fotoğrafı, oda görseli veya destek talebi için kamera ile fotoğraf çekebilmeniz adına kamera erişimi gereklidir.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Profil fotoğrafı, oda görseli veya destek talebi için galerinizden fotoğraf seçebilmeniz adına fotoğraf arşivi erişimi gereklidir.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Seçtiğiniz veya oluşturduğunuz görselleri fotoğraf arşivinize kaydetmek için izin gereklidir.</string>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>Yayın başlangıçları, davetler ve etiketlemeler hakkında bildirim almak için izin gereklidir.</string>
 </dict>

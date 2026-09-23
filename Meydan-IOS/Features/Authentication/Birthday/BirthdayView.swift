@@ -2,19 +2,32 @@ import SwiftUI
 
 struct BirthdayView: View {
     @StateObject var viewModel: BirthdayViewModel
-    @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         ZStack {
             Color.background.ignoresSafeArea()
             
             VStack(spacing: 0) {
-                // Header with Logo
-                Image("meydan_logo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 50, height: 50)
-                    .padding(.top, 40)
+                ZStack {
+                    Image("meydan_logo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 50, height: 50)
+                    HStack {
+                        Button(action: viewModel.navigateBack) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .accessibilityLabel("Geri")
+                        .disabled(viewModel.isLoading)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .padding(.top, 40)
                 
                 Spacer()
                 

@@ -13,6 +13,7 @@ class PersonalInfoViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
 
+    private let currentUserProfileCacheKey = "profile.currentUser"
     private let calendar = Calendar(identifier: .gregorian)
     private let iso8601Formatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
@@ -105,9 +106,16 @@ class PersonalInfoViewModel: ObservableObject {
             print("Profil fotografi yuklenirken hata: \(error.localizedDescription)")
         }
     }
+
+    func removeProfileImage() async {
+        selectedProfileImage = nil
+        profileImageURL = ""
+        await updateProfile()
+    }
     
     func updateProfile() async {
-        errorMessage = nil
+        errorMessage = [name, username, bio].compactMap { ContentFilter.warning(for: $0) }.first
+        guard errorMessage == nil else { return }
         isLoading = true
         defer { isLoading = false }
 
@@ -133,6 +141,7 @@ class PersonalInfoViewModel: ObservableObject {
         do {
             _ = try await UserService.shared.updateProfile(request: request)
             print("Profil başarıyla güncellendi")
+            AppMemoryCache.shared.removeValue(forKey: currentUserProfileCacheKey)
             // Refresh local data to be sure
             await fetchUserData()
             

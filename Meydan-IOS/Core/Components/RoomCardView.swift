@@ -43,6 +43,7 @@ struct RoomCardView: View {
                             endPoint: .bottom
                         )
                     )
+                    .allowsHitTesting(false)
 
                 HStack {
                     HStack(spacing: 6) {
@@ -61,33 +62,30 @@ struct RoomCardView: View {
                     Spacer()
 
                     if room.isLive {
-                        HStack(spacing: 6) {
-                            Image(systemName: "person")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 12, height: 12)
-                            Text("\(room.viewersCount)")
-                                .font(.manrope(.bold, size: 12))
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 8)
-                        .background(Color.black)
-                        .clipShape(Capsule())
+                        LiveViewerCountBadge(
+                            roomId: room.roomId,
+                            initialCount: room.viewersCount
+                        )
                     }
 
-                    Button(action: onOptionsTap) {
+                    Button {
+                        print("DEBUG: RoomCard üç nokta tapped. roomId=\(room.roomId), title=\(room.title)")
+                        onOptionsTap()
+                    } label: {
                         Image(systemName: "ellipsis")
                             .font(.system(size: 18, weight: .bold))
                             .rotationEffect(.degrees(90))
                             .foregroundColor(.white)
-                            .frame(width: 36, height: 36)
-                            .background(Color.clear)
+                            .frame(width: 44, height: 44)
+                            .background(Color.black.opacity(0.001))
                             .clipShape(Circle())
                     }
                     .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .zIndex(4)
                 }
                 .padding(8)
-                .zIndex(2)
+                .zIndex(4)
 
                 VStack(alignment: .leading, spacing: 8) {
                     Spacer()
@@ -100,6 +98,8 @@ struct RoomCardView: View {
                                     .clipShape(Circle())
                                     .overlay(Circle().stroke(Color.white, lineWidth: 1))
                             }
+                            .frame(width: 52, height: 52)
+                            .contentShape(Rectangle())
                         }
                         .padding(.leading, 8)
                         .buttonStyle(.plain)
@@ -110,7 +110,7 @@ struct RoomCardView: View {
                                 .foregroundColor(.white)
                                 .lineLimit(1)
 
-                            Text(room.creatorName.lowercased())
+                            Text(displayCreatorUsername)
                                 .font(.manrope(.medium, size: 12))
                                 .foregroundColor(.white.opacity(0.6))
                         }
@@ -118,48 +118,75 @@ struct RoomCardView: View {
                     }
 
                     if room.isLive {
-                        Text("Sohbete Katıl")
-                            .font(.manrope(.bold, size: 16))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 48)
-                            .background(Color(red: 1, green: 0.45, blue: 0.4))
-                            .cornerRadius(16)
-                            .padding(8)
-                            .contentShape(Rectangle())
+                        Button {
+                            print("DEBUG: RoomCard Sohbete Katıl tapped. roomId=\(room.roomId), isLive=\(room.isLive), canJoin=\(canJoinRoom), title=\(room.title)")
+                            guard canJoinRoom else {
+                                print("DEBUG: RoomCard Sohbete Katıl guard engelledi. roomId=\(room.roomId)")
+                                return
+                            }
+                            onJoinTap()
+                        } label: {
+                            Text("Sohbete Katıl")
+                                .font(.manrope(.bold, size: 16))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 48)
+                                .background(canJoinRoom ? Color(red: 1, green: 0.45, blue: 0.4) : Color.gray.opacity(0.55))
+                                .cornerRadius(16)
+                        }
+                        .disabled(!canJoinRoom)
+                        .buttonStyle(.plain)
+                        .contentShape(RoundedRectangle(cornerRadius: 16))
+                        .padding(8)
+                        .zIndex(5)
                     } else {
                         HStack(spacing: 12) {
                             HStack {
                                 Text(room.scheduledText ?? "")
                                     .font(.manrope(.bold, size: 14))
                                     .frame(maxWidth: .infinity)
-                                    .frame(height: 48)
+                                    .frame(height: 56)
                             }
                             .background(Color(hex: "1B1B1B"))
                             .cornerRadius(16)
 
                             Button {
+                                print("DEBUG: RoomCard bildirim tapped. roomId=\(room.roomId), title=\(room.title), subscribed=\(isNotificationSubscribed)")
                                 onNotificationTap?()
                             } label: {
                                 Image(systemName: isNotificationSubscribed ? "bell.fill" : "bell")
+                                    .font(.system(size: 20, weight: .semibold))
                                     .foregroundColor(isNotificationSubscribed ? Color(red: 1, green: 0.45, blue: 0.4) : .white)
-                                    .frame(width: 48, height: 48)
+                                    .frame(width: 56, height: 56)
                                     .background(Color(hex: "1B1B1B"))
-                                    .cornerRadius(16)
+                                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 18)
+                                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                    )
                             }
+                            .buttonStyle(.plain)
+                            .contentShape(Rectangle())
                         }
                         .padding(8)
                     }
                 }
                 .padding(4)
+                .zIndex(6)
             }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            onJoinTap()
         }
         .clipShape(RoundedRectangle(cornerRadius: 24))
         .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
+    }
+
+    private var canJoinRoom: Bool {
+        room.isLive && !room.roomId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var displayCreatorUsername: String {
+        let username = room.creatorUsername.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !username.isEmpty else { return "@unknown" }
+        return username.hasPrefix("@") ? username.lowercased() : "@\(username.lowercased())"
     }
 }
 

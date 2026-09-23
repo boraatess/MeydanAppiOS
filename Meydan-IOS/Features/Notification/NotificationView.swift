@@ -2,66 +2,119 @@ import SwiftUI
 
 struct NotificationView: View {
     @StateObject private var viewModel = NotificationViewModel()
-    @Environment(\.dismiss) private var dismiss
+    @State private var chatDestination: ChatDestination?
+    @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 8) {
-                VStack(spacing: 16) {
-                    header
-                }
+        NavigationStack(path: $navigationPath) {
+            GeometryReader { geometry in
+                let safeWidth = geometry.size.width.isFinite ? max(geometry.size.width, 0) : 0
+                let horizontalPadding = min(max(safeWidth * 0.045, 16), 24)
+                let contentMaxWidth = min(max(safeWidth - (horizontalPadding * 2), 0), 560)
 
-                if viewModel.isLoading && viewModel.notifications.isEmpty {
-                    Spacer(minLength: 0)
-                    ProgressView()
-                        .tint(.white)
-                    Spacer(minLength: 0)
-                } else if let errorMessage = viewModel.errorMessage, viewModel.notifications.isEmpty {
-                    Spacer(minLength: 0)
-                    VStack(spacing: 12) {
-                        Text(errorMessage)
-                            .font(.manrope(.medium, size: 14))
-                            .foregroundColor(.red)
-                            .multilineTextAlignment(.center)
-                        Button("Tekrar Dene") {
-                            viewModel.fetchNotifications()
+                VStack(spacing: 8) {
+                    
+                    header
+
+                    if viewModel.isLoading && viewModel.notifications.isEmpty {
+                        Spacer(minLength: 0)
+                        ProgressView()
+                            .tint(.white)
+                        Spacer(minLength: 0)
+                    } else if let errorMessage = viewModel.errorMessage, viewModel.notifications.isEmpty {
+                        Spacer(minLength: 0)
+                        VStack(spacing: 12) {
+                            Text(errorMessage)
+                                .font(.manrope(.medium, size: 14))
+                                .foregroundColor(.red)
+                                .multilineTextAlignment(.center)
+                            Button("Tekrar Dene") {
+                                viewModel.fetchNotifications()
+                            }
+                            .font(.manrope(.semiBold, size: 14))
+                            .foregroundColor(.white)
                         }
-                        .font(.manrope(.semiBold, size: 14))
-                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        Spacer(minLength: 0)
+                    } else if viewModel.notifications.isEmpty {
+                        Spacer(minLength: 0)
+                        EmptyNotificationView()
+                            .frame(maxWidth: .infinity)
+                        Spacer(minLength: 0)
+                    } else {
+                        notificationList
                     }
-                    Spacer(minLength: 0)
-                } else if viewModel.notifications.isEmpty {
-                    Spacer(minLength: 0)
-                    EmptyNotificationView()
-                    Spacer(minLength: 0)
-                } else {
-                    notificationList
+                }
+                .frame(
+                    maxWidth: contentMaxWidth,
+                    maxHeight: .infinity,
+                    alignment: .top
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
+            .background(Color.black.ignoresSafeArea())
+            .navigationBarHidden(true)
+            .overlay(alignment: .top) {
+                if let roomAccessMessage = viewModel.roomAccessMessage {
+                    TransientToastView(message: roomAccessMessage)
+                        .padding(.top, 12)
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding(16)
-            .background(Color.background.ignoresSafeArea(edges: .bottom))
-            .navigationBarHidden(true)
+            .fullScreenCover(item: $chatDestination) { destination in
+                ChatView(
+                    roomId: destination.roomId,
+                    roomTitle: destination.roomTitle,
+                    roomOwnerUsername: destination.roomOwnerUsername,
+                    roomOwnerUserId: destination.roomOwnerUserId
+                )
+            }
+            .padding(.horizontal, 8)
+            .padding(.top, 8)
+            .navigationDestination(for: ProfileNavigation.self) { destination in
+                switch destination {
+                case .otherProfile(let userId, let name, let username):
+                    OtherUserProfileView(userId: userId, name: name, username: username)
+                case .followers(let userId):
+                    FollowRelationsView(viewModel: FollowRelationsViewModel(type: .followers, userId: userId))
+                case .following(let userId):
+                    FollowRelationsView(viewModel: FollowRelationsViewModel(type: .following, userId: userId))
+                default:
+                    EmptyView()
+                }
+            }
+            .alert("Bilgilendirme", isPresented: Binding(
+                get: { viewModel.expiredRoomMessage != nil },
+                set: { if !$0 { viewModel.expiredRoomMessage = nil } }
+            )) {
+                Button("Tamam", role: .cancel) {
+                    viewModel.expiredRoomMessage = nil
+                }
+            } message: {
+                Text(viewModel.expiredRoomMessage ?? "")
+            }
             .onAppear {
                 viewModel.fetchNotifications()
             }
             .refreshable {
-                viewModel.fetchNotifications()
+                await viewModel.refreshAndMarkAllAsRead()
             }
         }
-        .padding(.horizontal, 16)
-        
     }
 
     private var header: some View {
-        HStack(spacing: 16) {
-
+        HStack(spacing: 12) {
+            
             Text("Bildirimler")
                 .font(.manrope(.bold, size: 18))
                 .foregroundColor(.white)
-
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+            
             Spacer()
-
+            
             Button(action: {
                 viewModel.markAllAsRead()
             }) {
@@ -69,7 +122,7 @@ struct NotificationView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .fill(Color.clear)
                         .frame(width: 48, height: 48)
-
+                    
                     Image("mdi_bell-check")
                         .font(.system(size: 24))
                     
@@ -77,7 +130,9 @@ struct NotificationView: View {
             }
             .buttonStyle(.plain)
         }
-        .padding(8)
+        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity)
+        
     }
 
     private var notificationList: some View {
@@ -98,7 +153,9 @@ struct NotificationView: View {
                     notificationSection(viewModel.olderNotifications)
                 }
             }
-            .padding(.bottom)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
         }
     }
 
@@ -112,7 +169,13 @@ struct NotificationView: View {
     private func notificationSection(_ items: [NotificationItem]) -> some View {
         VStack(spacing: 8) {
             ForEach(items) { notification in
-                NotificationRow(notification: notification)
+                NotificationRow(
+                    notification: notification,
+                    isActionLoading: viewModel.actionLoadingNotificationId == notification.id,
+                    onActionTap: {
+                        handleNotificationAction(notification)
+                    }
+                )
                     .onTapGesture {
                         withAnimation {
                             viewModel.markAsRead(notification)
@@ -121,50 +184,103 @@ struct NotificationView: View {
             }
         }
     }
+
+    private func handleNotificationAction(_ notification: NotificationItem) {
+        viewModel.markAsRead(notification)
+
+        switch notification.actionKind {
+        case .openProfile:
+            if let destination = viewModel.profileDestination(for: notification) {
+                navigationPath.append(destination)
+            }
+        case .openRoom, .browseRoom:
+            Task {
+                chatDestination = await viewModel.chatDestination(for: notification)
+            }
+        case .expiredRoom:
+            viewModel.expiredRoomMessage = "Bu sohbet odasının süresi dolmuş veya oda sona ermiş."
+        case .none:
+            break
+        }
+    }
 }
 
 // MARK: - Bildirim Satırı Tasarımı
 struct NotificationRow: View {
     let notification: NotificationItem
+    var isActionLoading: Bool = false
+    var onActionTap: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
                 notificationAvatar
+                    .frame(width: 36, height: 36)
+                    .fixedSize()
 
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(notification.title)
-                        .font(.system(size: 14, weight: .bold))
+                    (Text(notification.title)
+                        .font(.manrope(.bold, size: 14))
                         .foregroundColor(.white)
                     + Text(" \(notification.message)")
-                        .font(.system(size: 14, weight: .regular))
-                        .foregroundColor(.white)
+                        .font(.manrope(.regular, size: 14))
+                        .foregroundColor(.white))
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
 
                     HStack {
                         Spacer()
                         Text(notification.time)
-                            .font(.system(size: 11, weight: .regular))
+                            .font(.manrope(.regular, size: 11))
                             .foregroundColor(.gray)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .fixedSize(horizontal: false, vertical: true)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             if let buttonTitle = notification.buttonTitle, notification.buttonStyle != .none {
-                Button(action: {}) {
-                    Text(buttonTitle)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(notification.buttonStyle == .disabled ? .gray : .white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(notification.buttonStyle == .disabled ? Color(white: 0.25) : Color.branding)
-                        .cornerRadius(12)
+                Button(action: onActionTap) {
+                    ZStack {
+                        Text(buttonTitle)
+                            .opacity(isActionLoading ? 0 : 1)
+
+                        if isActionLoading {
+                            ProgressView()
+                                .tint(.white)
+                        }
+                    }
+                    .font(.manrope(.semiBold, size: 14))
+                    .foregroundColor(notification.buttonStyle == .disabled ? .white.opacity(0.75) : .white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(actionBackgroundColor)
+                    .cornerRadius(12)
                 }
-                .disabled(notification.buttonStyle == .disabled)
+                .disabled(isActionLoading)
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
             }
         }
         .padding(16)
-        .background(notification.isRead ? Color(white: 0.15) : Color(white: 0.22))
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(notification.isRead ? Color(hex: "#1B1B1B") : Color(hex: "#363636"))
         .cornerRadius(16)
+        .clipped()
+    }
+
+    private var actionBackgroundColor: Color {
+        switch notification.buttonStyle {
+        case .disabled:
+            return Color(white: 0.5)
+        case .active:
+            return notification.buttonTitle == "Gözat" ? Color(red: 0.73, green: 0.25, blue: 0.22) : Color.branding
+        case .none:
+            return .clear
+        }
     }
 
     @ViewBuilder

@@ -1,13 +1,63 @@
 import SwiftUI
 
+struct EditRoomData: Hashable {
+    let roomId: String
+    let title: String
+    let date: Date
+    let categoryId: String?
+    let categoryName: String?
+    let imageURL: String
+}
+
+enum CreateRoomMode: Hashable {
+    case create
+    case edit(EditRoomData)
+
+    var isEditing: Bool {
+        if case .edit = self { return true }
+        return false
+    }
+
+    var headerTitle: String {
+        isEditing ? "Sohbet Odasını Düzenle" : "Sohbet Odası Oluştur"
+    }
+
+    var buttonTitle: String {
+        isEditing ? "Değişiklikleri Kaydet" : "Yayını Planla"
+    }
+
+    var initialTitle: String {
+        guard case .edit(let data) = self else { return "" }
+        return data.title
+    }
+
+    var initialDate: Date {
+        guard case .edit(let data) = self else { return Date() }
+        return data.date
+    }
+
+    var initialCategoryValue: String {
+        guard case .edit(let data) = self else { return "" }
+        return data.categoryName?.isEmpty == false ? data.categoryName! : data.categoryId ?? ""
+    }
+
+    var initialImageURL: String {
+        guard case .edit(let data) = self else { return "" }
+        return data.imageURL
+    }
+}
+
 struct CreateRoomView: View {
+    let mode: CreateRoomMode
     let onBack: () -> Void
 
-    @StateObject private var viewModel = CreateRoomViewModel()
+    @StateObject private var viewModel: CreateRoomViewModel
 
-    @State private var title: String = ""
-    @State private var selectedDate: Date = Date()
-    @State private var categoryText: String = ""
+    @State private var title: String
+    @State private var selectedDate: Date
+    @State private var categoryText: String
+    @State private var existingImageURL: String
+    @State private var didRemoveExistingImage = false
     
     // UI State
     @State private var showPhotoOptions = false
@@ -16,6 +66,16 @@ struct CreateRoomView: View {
     @State private var showDatePicker = false
     @State private var showTimePicker = false
     @State private var showCategoryPicker = false
+
+    init(mode: CreateRoomMode = .create, onBack: @escaping () -> Void) {
+        self.mode = mode
+        self.onBack = onBack
+        _viewModel = StateObject(wrappedValue: CreateRoomViewModel())
+        _title = State(initialValue: mode.initialTitle)
+        _selectedDate = State(initialValue: mode.initialDate)
+        _categoryText = State(initialValue: mode.initialCategoryValue)
+        _existingImageURL = State(initialValue: mode.initialImageURL)
+    }
 
     var body: some View {
         ZStack {
@@ -45,14 +105,27 @@ struct CreateRoomView: View {
 
                         Button {
                             Task {
-                                let didCreate = await viewModel.createRoom(
-                                    title: title,
-                                    date: selectedDate,
-                                    categoryName: categoryText,
-                                    selectedImage: selectedImage
-                                )
+                                let didSave: Bool
+                                switch mode {
+                                case .create:
+                                    didSave = await viewModel.createRoom(
+                                        title: title,
+                                        date: selectedDate,
+                                        categoryName: categoryText,
+                                        selectedImage: selectedImage
+                                    )
+                                case .edit(let data):
+                                    didSave = await viewModel.updateRoom(
+                                        id: data.roomId,
+                                        title: title,
+                                        date: selectedDate,
+                                        categoryName: categoryText,
+                                        selectedImage: selectedImage,
+                                        existingImageURL: selectedImage == nil && !didRemoveExistingImage ? existingImageURL : nil
+                                    )
+                                }
 
-                                if didCreate {
+                                if didSave {
                                     onBack()
                                 }
                             }
@@ -65,12 +138,12 @@ struct CreateRoomView: View {
                                     .background(Color(hex: "#2C2C2C"))
                                     .cornerRadius(18)
                             } else {
-                                Text("Yayını Planla")
+                                Text(mode.buttonTitle)
                                     .font(.manrope(.bold, size: 18))
                                     .foregroundColor(.white)
                                     .frame(maxWidth: .infinity)
                                     .frame(height: 56)
-                                    .background(Color(hex: "#2C2C2C"))
+                                    .background(mode.isEditing ? Color(hex: "#FF5C5C") : Color(hex: "#2C2C2C"))
                                     .cornerRadius(18)
                             }
                         }
@@ -127,6 +200,9 @@ struct CreateRoomView: View {
         .onAppear {
             viewModel.fetchHobbies()
         }
+        .onReceive(viewModel.$hobbies) { hobbies in
+            resolveInitialCategoryNameIfNeeded(with: hobbies)
+        }
     }
 
     private var formattedDateTime: String {
@@ -148,7 +224,7 @@ struct CreateRoomView: View {
             }
             .buttonStyle(.plain)
 
-            Text("Sohbet Odası Oluştur")
+            Text(mode.headerTitle)
                 .font(.manrope(.bold, size: 20))
                 .foregroundColor(.white)
 
@@ -180,6 +256,40 @@ struct CreateRoomView: View {
                             .padding(12)
                     }
                 }
+            } else if !existingImageURL.isEmpty && !didRemoveExistingImage {
+                ZStack(alignment: .topTrailing) {
+                    AsyncImage(url: URL(string: existingImageURL)) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image
+                                .resizable()
+                                .aspectRatio(1.6, contentMode: .fill)
+                        default:
+                            ZStack {
+                                Color(hex: "#1B1B1B")
+                                Image(systemName: "photo")
+                                    .font(.system(size: 34))
+                                    .foregroundColor(.white.opacity(0.45))
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 150)
+                    .cornerRadius(22)
+                    .clipped()
+                    .onTapGesture {
+                        withAnimation { showPhotoOptions = true }
+                    }
+
+                    Button {
+                        didRemoveExistingImage = true
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(.white.opacity(0.8))
+                            .padding(12)
+                    }
+                }
             } else {
                 Button {
                     withAnimation { showPhotoOptions = true }
@@ -202,6 +312,18 @@ struct CreateRoomView: View {
         }
         .padding(.top, 32)
         
+    }
+
+    private func resolveInitialCategoryNameIfNeeded(with hobbies: [Hobby]) {
+        guard case .edit(let data) = mode,
+              let categoryId = data.categoryId,
+              !categoryId.isEmpty,
+              categoryText == categoryId,
+              let categoryName = hobbies.first(where: { $0._id == categoryId })?.name else {
+            return
+        }
+
+        categoryText = categoryName
     }
 
     private func customTextField(placeholder: String, text: Binding<String>) -> some View {

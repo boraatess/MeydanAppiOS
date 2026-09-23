@@ -1,5 +1,7 @@
 import Foundation
+import FirebaseCore
 import FirebaseDatabase
+import FirebaseAuth
 
 @MainActor
 class ChatViewModel: ObservableObject {
@@ -7,15 +9,28 @@ class ChatViewModel: ObservableObject {
     @Published var messages: [Message] = []
     // current message text in the text field
     @Published var currentMessageText: String = ""
+    @Published var messageValidationError: String?
+    @Published var pollValidationError: String?
 
     // RTDB properties
-    private let dbRef = Database.database().reference()
     private var messagesHandle: DatabaseHandle?
+    private var roomStatusHandle: DatabaseHandle?
     private var currentUserId = ""
-    private var currentUsername = ""
+    @Published private var currentUsername = ""
     private var currentUserAvatar: String?
     private var isLoadingCurrentUser = false
+    private var hasJoinedRoomViewers = false
+    private var hasLeftRoomViewers = false
     let roomId: String
+
+    private var dbRef: DatabaseReference? {
+        guard !RuntimeEnvironment.isSwiftUIPreview,
+              FirebaseApp.app() != nil else {
+            return nil
+        }
+
+        return Database.database().reference()
+    }
     
     // Basılı tutularak seçilen mesajı saklar.
     @Published var selectedMessage: Message?
@@ -31,6 +46,8 @@ class ChatViewModel: ObservableObject {
     @Published var isInvitingUser = false
     @Published var inviteErrorMessage: String?
     @Published var inviteSuccessMessage: String?
+    @Published var shareURL: URL?
+    @Published var showShareSheet = false
     
     // "Katılımcıları Gör" ekranının gösterilip gösterilmeyeceğini belirler.
     @Published var showParticipantsSheet = false
@@ -40,9 +57,6 @@ class ChatViewModel: ObservableObject {
     
     // "Anket Oluştur" ekranının gösterilip gösterilmeyeceğini belirler.
     @Published var showCreatePollSheet = false
-
-    // "Ekle" (+) menüsünün görünürlüğünü kontrol eder.
-    @Published var showAttachmentMenu = false
 
     // MARK: - Poll Properties
     enum PollState {
@@ -65,12 +79,24 @@ class ChatViewModel: ObservableObject {
     
     // Çıkış onayı popup'ının görünürlüğünü kontrol eder.
     @Published var showExitConfirmation = false
+    @Published var isEndingRoom = false
     
     // Yayından çıkarılma alert'inin görünürlüğünü kontrol eder.
     @Published var showKickAlert = false
+
+    // Oda sonlandığında kullanıcıya gösterilecek bilgilendirme ekranı.
+    @Published var showRoomEndedInfo = false
+    @Published var isRoomClosing = false
+    @Published var closingCountdownText: String?
+    @Published var roomClosedByUsername: String?
+
+    private var closingCountdownTimer: Timer?
     
     // MARK: - Poll Actions
-    func startPoll(question: String, options: [String]) {
+    @discardableResult
+    func startPoll(question: String, options: [String]) -> Bool {
+        pollValidationError = ([question] + options).compactMap { ContentFilter.warning(for: $0) }.first
+        guard pollValidationError == nil else { return false }
         let filteredOptions = options.filter { !$0.isEmpty }
         self.activePollQuestion = question
         self.activePollOptions = filteredOptions
@@ -94,15 +120,12 @@ class ChatViewModel: ObservableObject {
                 print("DEBUG: Failed to create poll via API: \(error.localizedDescription)")
             }
         }
+        return true
     }
     
     func vote(optionIndex: Int) {
         pollVotes[optionIndex, default: 0] += 1
         self.showPollVoteSheet = false
-        // For demo purposes, end the poll after a short delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-            self.pollState = .ended
-        }
         
         Task {
             do {
@@ -117,6 +140,14 @@ class ChatViewModel: ObservableObject {
             }
         }
     }
+
+    func endPoll() {
+        guard pollState == .active else { return }
+        pollState = .ended
+        showCreatePollSheet = false
+        showPollVoteSheet = false
+        showPollResultsSheet = true
+    }
     
     func getTotalVotes() -> Int {
         pollVotes.values.reduce(0, +)
@@ -130,34 +161,148 @@ class ChatViewModel: ObservableObject {
     // Chat odasına ait bilgiler (başlık ve sahibi), header ile uyumlu tutulur
     let roomTitle: String
     let roomOwnerUsername: String
+    let roomOwnerUserId: String
+
+    var isCurrentUserRoomOwner: Bool {
+        !currentUserId.isEmpty
+            && !roomOwnerUserId.isEmpty
+            && currentUserId == roomOwnerUserId
+    }
+
+    private var hasValidRoomId: Bool {
+        !roomId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var exitConfirmationMessage: String {
+        isCurrentUserRoomOwner
+            ? "Odayı sonlandırmak istediğinizden\nemin misiniz?"
+            : "Sohbetten çıkmak istediğinize\nemin misiniz?"
+    }
     
     init(
         roomId: String = "test_room_123",
         roomTitle: String = "Türkiye - İspanya Maçı",
-        roomOwnerUsername: String = "rumeysasacak"
+        roomOwnerUsername: String = "rumeysasacak",
+        roomOwnerUserId: String = ""
     ) {
         self.roomId = roomId
         self.roomTitle = roomTitle
         self.roomOwnerUsername = roomOwnerUsername
-        loadMockMessages()
+        self.roomOwnerUserId = roomOwnerUserId
+        // loadMockMessages()
+    }
+
+    func handleBackTapped() {
+        Task {
+            await loadCurrentUserIfNeeded()
+            showExitConfirmation = true
+        }
+    }
+
+    func endRoomIfNeededBeforeExit() async {
+        guard !isEndingRoom else { return }
+
+        isEndingRoom = true
+        defer { isEndingRoom = false }
+
+        await loadCurrentUserIfNeeded()
+        guard hasValidRoomId else {
+            print("DEBUG: Odadan çıkış viewer isteği atlanıyor; roomId boş. roomId=\(roomId)")
+            return
+        }
+
+        if isCurrentUserRoomOwner {
+            do {
+                _ = try await RoomService.shared.scheduleRoomClosure(id: roomId)
+            } catch {
+                print("DEBUG: Oda kapanış sayacı başlatılamadı: \(error.localizedDescription)")
+            }
+        }
+
+        await leaveRoomViewersIfNeeded(reason: "confirmed_exit")
     }
     
     func connectToWebSocket() {
         print("RTDB listener başlatılıyor...")
+        guard hasValidRoomId else {
+            print("DEBUG: Chat bağlantısı başlatılmadı; roomId boş. roomId=\(roomId)")
+            return
+        }
+
+        guard !RuntimeEnvironment.isSwiftUIPreview,
+              FirebaseApp.app() != nil else {
+            print("DEBUG: Firebase yapılandırılmadığı için RTDB listener başlatılmadı.")
+            return
+        }
+
+        print("DEBUG: Firebase Auth current uid: \(Auth.auth().currentUser?.uid ?? "nil")")
+        guard dbRef != nil else {
+            print("DEBUG: Firebase RTDB reference oluşturulamadı.")
+            return
+        }
+
         Task {
             await loadCurrentUserIfNeeded()
+            await joinRoomViewers()
             listenForMessages()
+            listenForRoomStatus()
+        }
+    }
+
+    private func joinRoomViewers() async {
+        guard hasValidRoomId else {
+            print("DEBUG: join-room-viewers atlanıyor; roomId boş. roomId=\(roomId)")
+            return
+        }
+
+        do {
+            print("DEBUG: join-room-viewers çağrılıyor. roomId=\(roomId)")
+            _ = try await RoomService.shared.joinRoomViewers(id: roomId)
+            hasJoinedRoomViewers = true
+            hasLeftRoomViewers = false
+        } catch {
+            print("DEBUG: Odaya viewer olarak katılma isteği başarısız: \(error.localizedDescription)")
+        }
+    }
+
+    func leaveRoomViewersIfNeeded(reason: String) async {
+        guard hasValidRoomId else {
+            print("DEBUG: leave-room-viewers atlanıyor; roomId boş. reason=\(reason), roomId=\(roomId)")
+            return
+        }
+
+        guard !hasLeftRoomViewers else {
+            print("DEBUG: leave-room-viewers tekrar atlanıyor. reason=\(reason), roomId=\(roomId)")
+            return
+        }
+
+        do {
+            print("DEBUG: leave-room-viewers çağrılıyor. reason=\(reason), roomId=\(roomId), joined=\(hasJoinedRoomViewers)")
+            _ = try await RoomService.shared.leaveRoomViewers(id: roomId)
+            hasLeftRoomViewers = true
+            hasJoinedRoomViewers = false
+        } catch {
+            print("DEBUG: leave-room-viewers başarısız. reason=\(reason), error=\(error.localizedDescription)")
         }
     }
     
     func disconnectFromWebSocket() {
         print("RTDB listener kapatılıyor...")
+        guard let dbRef else { return }
+
         if let handle = messagesHandle {
             dbRef.child("rooms").child(roomId).child("messages").removeObserver(withHandle: handle)
         }
+        if let handle = roomStatusHandle {
+            dbRef.child("rooms").child(roomId).child("status").removeObserver(withHandle: handle)
+        }
+
+        stopClosingCountdown()
     }
     
     private func listenForMessages() {
+        guard let dbRef, hasValidRoomId else { return }
+
         let roomMessagesRef = dbRef.child("rooms").child(roomId).child("messages")
         
         messagesHandle = roomMessagesRef.queryOrdered(byChild: "createdAt").observe(.value) { [weak self] snapshot in
@@ -186,12 +331,107 @@ class ChatViewModel: ObservableObject {
         }
         
     }
+
+    private func listenForRoomStatus() {
+        guard let dbRef, hasValidRoomId else { return }
+
+        roomStatusHandle = dbRef.child("rooms").child(roomId).child("status").observe(.value) { [weak self] snapshot in
+            guard let self else { return }
+
+            if let status = snapshot.value as? String {
+                self.handleRoomStatus(state: status, closeDeadline: nil, closedBy: nil)
+            } else if let status = snapshot.value as? Int,
+                      status == 2 || status == 3 {
+                self.handleRoomStatus(state: "closed", closeDeadline: nil, closedBy: nil)
+            } else if let dict = snapshot.value as? [String: Any] {
+                let state = (dict["state"] as? String)
+                    ?? (dict["status"] as? String)
+                    ?? ""
+                let closeDeadline = (dict["closeDeadline"] as? TimeInterval)
+                    ?? (dict["closeDeadline"] as? NSNumber)?.doubleValue
+                    ?? (dict["deadline"] as? TimeInterval)
+                    ?? (dict["deadline"] as? NSNumber)?.doubleValue
+                let closedBy = (dict["closedBy"] as? String)
+                    ?? (dict["closedByUsername"] as? String)
+                    ?? (dict["hostUsername"] as? String)
+
+                self.handleRoomStatus(state: state, closeDeadline: closeDeadline, closedBy: closedBy)
+            }
+        }
+    }
+
+    private func handleRoomStatus(state: String, closeDeadline: TimeInterval?, closedBy: String?) {
+        switch state.lowercased() {
+        case "closing":
+            guard !isCurrentUserRoomOwner else { return }
+            showRoomEndedInfo = false
+            roomClosedByUsername = closedBy
+            isRoomClosing = true
+            startClosingCountdown(deadlineMillis: closeDeadline)
+        case "active":
+            isRoomClosing = false
+            roomClosedByUsername = nil
+            stopClosingCountdown()
+        case "closed", "ended", "finished":
+            roomClosedByUsername = closedBy
+            isRoomClosing = false
+            stopClosingCountdown()
+            showRoomEndedInfoIfNeeded()
+        default:
+            break
+        }
+    }
+
+    private func startClosingCountdown(deadlineMillis: TimeInterval?) {
+        stopClosingCountdown()
+        updateClosingCountdown(deadlineMillis: deadlineMillis)
+
+        guard let deadlineMillis else { return }
+        closingCountdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.updateClosingCountdown(deadlineMillis: deadlineMillis)
+            }
+        }
+    }
+
+    private func updateClosingCountdown(deadlineMillis: TimeInterval?) {
+        guard let deadlineMillis else {
+            closingCountdownText = nil
+            return
+        }
+
+        let remainingSeconds = max(Int(ceil((deadlineMillis - Date().timeIntervalSince1970 * 1000) / 1000)), 0)
+        let minutes = remainingSeconds / 60
+        let seconds = remainingSeconds % 60
+        closingCountdownText = String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    private func stopClosingCountdown() {
+        closingCountdownTimer?.invalidate()
+        closingCountdownTimer = nil
+        closingCountdownText = nil
+    }
+
+    private func showRoomEndedInfoIfNeeded() {
+        guard !isCurrentUserRoomOwner else { return }
+        showInviteSheet = false
+        showParticipantsSheet = false
+        showCreatePollSheet = false
+        showPollVoteSheet = false
+        showPollResultsSheet = false
+        showReportSheet = false
+        showMoreOptionsMenu = false
+        showExitConfirmation = false
+        showRoomEndedInfo = true
+    }
     
     // MARK: - User Actions
     
     func sendMessage() {
         let messageText = currentMessageText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !messageText.isEmpty else { return }
+        messageValidationError = ContentFilter.warning(for: messageText)
+        guard messageValidationError == nil else { return }
         currentMessageText = ""
 
         Task {
@@ -201,6 +441,15 @@ class ChatViewModel: ObservableObject {
     }
 
     private func persistMessage(text: String) {
+        guard let dbRef else {
+            print("DEBUG: Firebase yapılandırılmadığı için mesaj RTDB'ye yazılmadı.")
+            return
+        }
+
+        guard hasValidRoomId else {
+            print("DEBUG: Mesaj RTDB'ye yazılmadı; roomId boş. roomId=\(roomId)")
+            return
+        }
         
         // Şimdiki zamanı "HH:mm" formatında al
         let formatter = DateFormatter()
@@ -236,7 +485,8 @@ class ChatViewModel: ObservableObject {
     }
 
     private func loadCurrentUserIfNeeded() async {
-        guard currentUserId.isEmpty, !isLoadingCurrentUser else { return }
+        guard currentUserId.isEmpty || currentUsername.isEmpty else { return }
+        guard !isLoadingCurrentUser else { return }
         isLoadingCurrentUser = true
         defer { isLoadingCurrentUser = false }
 
@@ -296,6 +546,7 @@ class ChatViewModel: ObservableObject {
     func muteUser(author: String) { print("Muting user: \(author)") }
     
     func inviteUser(username: String) {
+        guard !isInvitingUser else { return }
         let trimmedUsername = username
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "@", with: "")
@@ -305,6 +556,13 @@ class ChatViewModel: ObservableObject {
             inviteSuccessMessage = nil
             return
         }
+
+        guard hasValidRoomId else {
+            inviteErrorMessage = "Oda bilgisi bulunamadı."
+            inviteSuccessMessage = nil
+            print("DEBUG: Davet gönderilemedi; roomId boş. roomId=\(roomId)")
+            return
+        }
         
         isInvitingUser = true
         inviteErrorMessage = nil
@@ -312,7 +570,21 @@ class ChatViewModel: ObservableObject {
         
         Task {
             do {
+                await loadCurrentUserIfNeeded()
+                guard !currentUserId.isEmpty,
+                      !currentUsername.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    isInvitingUser = false
+                    inviteErrorMessage = "Kullanıcı bilgileriniz doğrulanamadı. Lütfen tekrar deneyin."
+                    return
+                }
+                guard !isCurrentUser(username: trimmedUsername) else {
+                    isInvitingUser = false
+                    inviteErrorMessage = "Kendinizi odaya davet edemezsiniz."
+                    return
+                }
+
                 let request = RoomInviteRequest(roomId: roomId, username: trimmedUsername)
+                print("DEBUG: Davet isteği gönderiliyor. roomId=\(roomId), username=\(trimmedUsername)")
                 let response = try await RoomService.shared.inviteUser(request: request)
                 isInvitingUser = false
                 inviteSuccessMessage = response.message ?? "Davet gönderildi."
@@ -326,7 +598,41 @@ class ChatViewModel: ObservableObject {
     func resetInviteState() {
         inviteErrorMessage = nil
         inviteSuccessMessage = nil
-        isInvitingUser = false
+    }
+
+    func isCurrentUser(username: String) -> Bool {
+        let lhs = username
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "@", with: "")
+            .lowercased()
+        let rhs = currentUsername
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "@", with: "")
+            .lowercased()
+        return !lhs.isEmpty && !rhs.isEmpty && lhs == rhs
+    }
+
+    func shareRoom() {
+        guard hasValidRoomId else {
+            inviteErrorMessage = "Oda bilgisi bulunamadı."
+            return
+        }
+
+        Task {
+            do {
+                let response = try await RoomService.shared.fetchRoomShareURL(id: roomId)
+                if let urlString = response.resolvedURL, let url = URL(string: urlString) {
+                    shareURL = url
+                } else {
+                    shareURL = URL(string: "\(AppConfig.apiBaseURL)/rooms/share/\(roomId)")
+                }
+            } catch {
+                print("DEBUG: Chat oda paylaşım linki alınamadı: \(error.localizedDescription)")
+                shareURL = URL(string: "\(AppConfig.apiBaseURL)/rooms/share/\(roomId)")
+            }
+
+            showShareSheet = shareURL != nil
+        }
     }
     
     func loadParticipants() {
@@ -337,7 +643,7 @@ class ChatViewModel: ObservableObject {
             do {
                 let response = try await RoomService.shared.fetchRoomViewers(id: roomId)
                 participants = response.viewers.map { viewer in
-                    let resolvedId = viewer._id.isEmpty ? viewer.username : viewer._id
+                    let resolvedUserId = viewer._id
                     let resolvedName: String
                     if !viewer.fullName.isEmpty {
                         resolvedName = viewer.fullName
@@ -348,10 +654,11 @@ class ChatViewModel: ObservableObject {
                     }
                     
                     return Participant(
-                        id: resolvedId.isEmpty ? UUID().uuidString : resolvedId,
+                        id: resolvedUserId.isEmpty ? "\(viewer.username)-\(UUID().uuidString)" : resolvedUserId,
+                        userId: resolvedUserId,
                         name: resolvedName,
                         username: viewer.username,
-                        avatar: viewer.profile?.avatar
+                        avatar: viewer.profileAvatar
                     )
                 }
                 isLoadingParticipants = false

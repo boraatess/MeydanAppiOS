@@ -100,9 +100,15 @@ struct CreatePollView: View {
                         }
                     }
                     
+                    if let error = viewModel.pollValidationError {
+                        Text(error)
+                            .font(.manrope(.regular, size: 13))
+                            .foregroundColor(.red)
+                    }
+
                     // Gönder Butonu
                     Button(action: {
-                        viewModel.startPoll(question: question, options: options)
+                        guard viewModel.startPoll(question: question, options: options) else { return }
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                             viewModel.showCreatePollSheet = false
                         }
@@ -125,6 +131,7 @@ struct CreatePollView: View {
         .background(Color(hex: "#121212"))
         .cornerRadius(24)
         .padding(.horizontal, 16)
+        .onAppear { viewModel.pollValidationError = nil }
     }
 }
 

@@ -5,6 +5,7 @@ import Alamofire
 protocol NotificationServiceProtocol: Sendable {
     func subscribeFCM(request: FCMSubscribeRequest) async throws -> NotificationActionResponse
     func fetchNotifications() async throws -> NotificationsListResponse
+    func markAsRead(id: String) async throws -> NotificationActionResponse
     func markAllAsRead() async throws -> NotificationActionResponse
     func subscribeRoom(request: RoomNotificationRequest) async throws -> NotificationActionResponse
     func unsubscribeRoom(request: RoomNotificationRequest) async throws -> NotificationActionResponse
@@ -26,6 +27,11 @@ final class NotificationService: NotificationServiceProtocol {
     func fetchNotifications() async throws -> NotificationsListResponse {
         let url = "\(baseURL)/user/notifications"
         return try await performRequest(url: url, method: .get, parameters: Optional<EmptyParameters>.none)
+    }
+
+    func markAsRead(id: String) async throws -> NotificationActionResponse {
+        let url = "\(baseURL)/user/notifications/\(id)/read"
+        return try await performRequest(url: url, method: .put, parameters: Optional<EmptyParameters>.none)
     }
 
     func markAllAsRead() async throws -> NotificationActionResponse {
@@ -79,6 +85,7 @@ final class NotificationService: NotificationServiceProtocol {
             }
 
             print("DEBUG: [\(method.rawValue)] \(url)")
+            printRequestDebugInfo(url: url, method: method, parameters: parameters)
 
             request
                 .validate()
@@ -103,6 +110,25 @@ final class NotificationService: NotificationServiceProtocol {
                         continuation.resume(throwing: Self.mapError(data: response.data, fallback: afError.localizedDescription))
                     }
                 }
+        }
+    }
+
+    private func printRequestDebugInfo<P: Encodable>(url: String, method: HTTPMethod, parameters: P?) {
+        print("DEBUG: Request URL: \(url)")
+        print("DEBUG: Request Method: \(method.rawValue)")
+        print("DEBUG: Request Has Authorization Header: \(TokenStorage.shared.token?.isEmpty == false)")
+
+        guard let parameters else {
+            print("DEBUG: Request Body: <empty>")
+            return
+        }
+
+        do {
+            let data = try JSONEncoder().encode(parameters)
+            let body = String(data: data, encoding: .utf8) ?? "<non-utf8 body>"
+            print("DEBUG: Request Body: \(body)")
+        } catch {
+            print("DEBUG: Request Body Encode Error: \(error.localizedDescription)")
         }
     }
 

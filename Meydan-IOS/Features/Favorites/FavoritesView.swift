@@ -6,95 +6,66 @@
 import Foundation
 import SwiftUI
 
-struct FavoriteStreamer: Identifiable {
-    let id: String
-    let isLive: Bool
-    let title: String?
-    let name: String
-    let username: String
-    let imageName: String
-}
-
-@MainActor
-final class FavoriteStreamersViewModel: ObservableObject {
-    @Published var streamers: [FavoriteStreamer] = []
-    @Published var isLoading = false
-    @Published var errorMessage: String?
-
-    private let userService: UserServiceProtocol
-
-    init(userService: UserServiceProtocol = UserService.shared) {
-        self.userService = userService
-    }
-
-    func fetchFavorites() async {
-        isLoading = true
-        errorMessage = nil
-
-        do {
-            let response = try await userService.getMyFavorites()
-            streamers = response.favorites.map(Self.mapFavorite)
-        } catch {
-            errorMessage = error.localizedDescription
-            streamers = []
-        }
-
-        isLoading = false
-    }
-
-    private static func mapFavorite(_ favorite: FavoriteStreamerResponse) -> FavoriteStreamer {
-        SearchDataHelper.mapFavorite(favorite)
-    }
-}
 
 struct FavoriteStreamersView: View {
+    
+    @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
     @State private var isSearchActive = false
-    @State private var searchFilter: SearchFilterType = .people
+    @State private var selectedProfile: FavoriteStreamer?
+    @State private var chatDestination: ChatDestination?
+    @State private var roomAccessError: String?
+    @State private var roomAccessMessage: String?
     @StateObject private var viewModel = FavoriteStreamersViewModel()
-    @StateObject private var searchViewModel = SearchViewModel()
+    private let horizontalInset: CGFloat = 8
 
     var body: some View {
         VStack(spacing: 8) {
-            VStack(spacing: 16) {
-                MainHeaderView(
-                    searchText: $searchText,
-                    isSearchActive: $isSearchActive,
-                    showsFavoritesButton: false,
-                    onFavoritesTapped: {}
-                )
-
-                if isSearchActive {
-                    SearchFilterChipsView(selectedFilter: $searchFilter)
-                }
-            }
+            FavoriteStreamersHeaderView(
+                title: "Favori Yayıncılar",
+                searchText: $searchText,
+                isSearchActive: $isSearchActive,
+                onBackTapped: { dismiss() }
+            )
             .padding(.bottom, 16)
 
-            if isSearchActive {
-                SearchResultsView(
-                    filter: searchFilter,
-                    searchText: searchText,
-                    people: searchViewModel.people,
-                    rooms: searchViewModel.rooms,
-                    isLoading: searchViewModel.isLoading,
-                    errorMessage: searchViewModel.errorMessage
-                )
-            } else {
-                content
+            content
+                .padding(.horizontal, 8)
+        }
+        .padding(.vertical, 16)
+        .padding(.horizontal, horizontalInset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Color.background.ignoresSafeArea())
+        .background(profileNavigationLink)
+        .onChange(of: isSearchActive) { isActive in
+            if !isActive {
+                searchText = ""
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .padding(16)
-        .background(Color.background.ignoresSafeArea(edges: .bottom))
-        .onChange(of: searchText) { newValue in
-            guard isSearchActive else { return }
-            searchViewModel.search(query: newValue)
+        .fullScreenCover(item: $chatDestination) { destination in
+            ChatView(
+                roomId: destination.roomId,
+                roomTitle: destination.roomTitle,
+                roomOwnerUsername: destination.roomOwnerUsername,
+                roomOwnerUserId: destination.roomOwnerUserId
+            )
         }
-        .onChange(of: isSearchActive) { isActive in
-            if isActive {
-                searchViewModel.search(query: searchText)
-            } else {
-                searchViewModel.reset()
+        .alert("Sohbete Katılamıyorsunuz", isPresented: Binding(
+            get: { roomAccessError != nil },
+            set: { isPresented in
+                if !isPresented {
+                    roomAccessError = nil
+                }
+            }
+        )) {
+            Button("Tamam", role: .cancel) { roomAccessError = nil }
+        } message: {
+            Text(roomAccessError ?? "")
+        }
+        .overlay(alignment: .top) {
+            if let roomAccessMessage {
+                TransientToastView(message: roomAccessMessage)
+                    .padding(.top, 12)
             }
         }
         .navigationBarHidden(true)
@@ -102,7 +73,7 @@ struct FavoriteStreamersView: View {
             await viewModel.fetchFavorites()
         }
         .refreshable {
-            await viewModel.fetchFavorites()
+            await viewModel.fetchFavorites(force: true)
         }
     }
 
@@ -126,7 +97,7 @@ struct FavoriteStreamersView: View {
                     .padding(.horizontal, 24)
                 Button("Tekrar Dene") {
                     Task {
-                        await viewModel.fetchFavorites()
+                        await viewModel.fetchFavorites(force: true)
                     }
                 }
                 .font(.manrope(.bold, size: 14))
@@ -142,11 +113,180 @@ struct FavoriteStreamersView: View {
         } else {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 12) {
-                    ForEach(viewModel.streamers) { streamer in
-                        StreamerCardView(streamer: streamer)
+                    ForEach(filteredStreamers) { streamer in
+                        StreamerCardView(
+                            streamer: streamer,
+                            onCardTap: {
+                                if let destination = ChatDestination(favoriteStreamer: streamer) {
+                                    openChatIfPossible(destination)
+                                } else {
+                                    selectedProfile = streamer
+                                }
+                            },
+                            onAvatarTap: {
+                                selectedProfile = streamer
+                            }
+                        )
                     }
                 }
+                .frame(maxWidth: .infinity)
                 .padding(.bottom)
+            }
+        }
+    }
+
+    private var filteredStreamers: [FavoriteStreamer] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return viewModel.streamers }
+
+        return viewModel.streamers.filter { streamer in
+            streamer.name.localizedCaseInsensitiveContains(query)
+                || streamer.username.localizedCaseInsensitiveContains(query)
+                || (streamer.title?.localizedCaseInsensitiveContains(query) == true)
+        }
+    }
+
+    private func openChatIfPossible(_ destination: ChatDestination) {
+        Task {
+            do {
+                let access = try await RoomAccessHelper.validateAccess(
+                    roomId: destination.roomId,
+                    roomOwnerUserId: destination.roomOwnerUserId
+                )
+                await showAccessMessageIfNeeded(access?.message)
+                chatDestination = destination
+            } catch {
+                roomAccessError = error.localizedDescription
+            }
+        }
+    }
+
+    private func showAccessMessageIfNeeded(_ message: String?) async {
+        guard let message = message?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !message.isEmpty else { return }
+
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+            roomAccessMessage = message
+        }
+
+        try? await Task.sleep(nanoseconds: 700_000_000)
+
+        withAnimation(.easeOut(duration: 0.2)) {
+            roomAccessMessage = nil
+        }
+    }
+
+    @ViewBuilder
+    private var profileNavigationLink: some View {
+        if let selectedProfile {
+            NavigationLink(
+                destination: OtherUserProfileView(
+                    userId: selectedProfile.id,
+                    name: selectedProfile.name,
+                    username: selectedProfile.username
+                ),
+                isActive: Binding(
+                    get: { self.selectedProfile != nil },
+                    set: { isActive in
+                        if !isActive {
+                            self.selectedProfile = nil
+                        }
+                    }
+                )
+            ) {
+                EmptyView()
+            }
+            .hidden()
+        }
+    }
+}
+
+private struct FavoriteStreamersHeaderView: View {
+    let title: String
+    @Binding var searchText: String
+    @Binding var isSearchActive: Bool
+    let onBackTapped: () -> Void
+
+    @FocusState private var isSearchFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 14) {
+                Button(action: onBackTapped) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                        .frame(width: 40, height: 40)
+                        .background(Color.white.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+
+                Text(title)
+                    .font(.manrope(.bold, size: 18))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+
+                Spacer()
+            }
+
+            HStack(spacing: 12) {
+                HStack(spacing: 10) {
+                    Image("Search")
+                        .resizable()
+                        .renderingMode(.template)
+                        .scaledToFit()
+                        .frame(width: 18, height: 18)
+                        .foregroundColor(.white)
+
+                    TextField("Ara", text: $searchText)
+                        .font(.manrope(.medium, size: 14))
+                        .foregroundColor(.white)
+                        .tint(.white)
+                        .focused($isSearchFocused)
+                        .submitLabel(.search)
+                        .lineLimit(1)
+
+                    if isSearchActive && !searchText.isEmpty {
+                        Button(action: { searchText = "" }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.gray)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity)
+                .frame(height: 45)
+                .background(Color.white.opacity(0.1))
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
+                )
+
+                if isSearchActive {
+                    Button("Vazgeç") {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            isSearchActive = false
+                            searchText = ""
+                            isSearchFocused = false
+                        }
+                    }
+                    .font(.manrope(.bold, size: 14))
+                    .foregroundColor(.white)
+                    .buttonStyle(.plain)
+                    .fixedSize()
+                }
+            }
+        }
+        .padding(.top, 16)
+        .padding(.horizontal, 16)
+        .onChange(of: isSearchFocused) { focused in
+            guard focused else { return }
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                isSearchActive = true
             }
         }
     }
@@ -154,40 +294,55 @@ struct FavoriteStreamersView: View {
 
 struct StreamerCardView: View {
     let streamer: FavoriteStreamer
-
+    var onCardTap: () -> Void = {}
+    var onAvatarTap: () -> Void = {}
+    
     var body: some View {
-        HStack(spacing: 16) {
-            ZStack {
-                if streamer.isLive {
-                    Circle()
-                        .stroke(Color.branding, lineWidth: 2)
-                        .frame(width: 52, height: 52)
+        Button(action: onCardTap) {
+            HStack(spacing: 16) {
+            Button(action: onAvatarTap) {
+                ZStack {
+                    if streamer.isLive {
+                        Circle()
+                            .stroke(Color.branding, lineWidth: 2)
+                            .frame(width: 52, height: 52)
+                    }
+                    
+                    FavoriteStreamerAvatar(source: streamer.imageName)
+                        .frame(width: 44, height: 44)
+                        .clipShape(Circle())
                 }
-
-                FavoriteStreamerAvatar(source: streamer.imageName)
-                    .frame(width: 44, height: 44)
-                    .clipShape(Circle())
             }
-
+            .buttonStyle(.plain)
+            
             VStack(alignment: .leading, spacing: 4) {
                 if streamer.isLive, let title = streamer.title {
                     Text(title)
                         .font(.manrope(.bold, size: 16))
                         .foregroundColor(.branding)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
 
                 HStack(spacing: 4) {
                     Text(streamer.name)
-                        .font(.manrope(.bold, size: 14))
+                        .font(.manrope(.bold, size: streamer.isLive ? 14 : 16))
                         .foregroundColor(.white)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .layoutPriority(1)
+
                     Text(streamer.username)
                         .font(.manrope(.medium, size: 12))
                         .foregroundColor(.grayLight)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
             }
-
-            Spacer()
-
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .layoutPriority(1)
+            
             if streamer.isLive {
                 Text("Canlı")
                     .font(.manrope(.bold, size: 10))
@@ -196,14 +351,20 @@ struct StreamerCardView: View {
                     .padding(.vertical, 4)
                     .background(Color.branding)
                     .clipShape(Capsule())
+                    .fixedSize()
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 16)
-        .background(Color.grayDark)
-        .cornerRadius(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
+            .background(Color.grayDark)
+            .cornerRadius(16)
+        }
+        .buttonStyle(.plain)
     }
+    
 }
+
 
 private struct FavoriteStreamerAvatar: View {
     let source: String

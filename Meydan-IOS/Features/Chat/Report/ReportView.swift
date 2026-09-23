@@ -57,16 +57,23 @@ struct ReportView: View {
                     // Şikayet Et Butonu
                     Button(action: {
                         viewModel.sendReport()
-                        onDismiss()
                     }) {
-                        Text("Şikayet Et")
-                            .font(.manrope(.bold, size: 16))
+                        Group {
+                            if viewModel.isSending {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Text("Şikayet Et")
+                                    .font(.manrope(.bold, size: 16))
+                            }
+                        }
                             .foregroundColor(.white)
                             .frame(maxWidth: .infinity)
                             .frame(height: 56)
                             .background(Color.branding)
                             .cornerRadius(12)
                     }
+                    .disabled(viewModel.isSending)
                     .padding(.horizontal, 24)
                     .padding(.top, 12)
                     .padding(.bottom, 32)
@@ -77,6 +84,37 @@ struct ReportView: View {
         .background(Color(hex: "#121212"))
         .cornerRadius(24)
         .padding(.horizontal, 16)
+        .overlay {
+            if viewModel.showSuccessOverlay {
+                VStack(spacing: 12) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 42, weight: .semibold))
+                        .foregroundColor(.branding)
+
+                    Text("Şikayetiniz alındı")
+                        .font(.manrope(.bold, size: 18))
+                        .foregroundColor(.white)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color(hex: "#121212"))
+                .clipShape(RoundedRectangle(cornerRadius: 24))
+                .transition(.opacity)
+            }
+        }
+        .alert("Şikayet gönderilemedi", isPresented: Binding(
+            get: { viewModel.errorMessage != nil },
+            set: { if !$0 { viewModel.errorMessage = nil } }
+        )) {
+            Button("Tamam", role: .cancel) { viewModel.errorMessage = nil }
+        } message: {
+            Text(viewModel.errorMessage ?? "")
+        }
+        .onChange(of: viewModel.showSuccessOverlay) { isVisible in
+            guard isVisible else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) {
+                onDismiss()
+            }
+        }
     }
 }
 

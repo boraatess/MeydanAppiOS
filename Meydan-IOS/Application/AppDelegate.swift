@@ -39,6 +39,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
+        Task { @MainActor in
+            NotificationBadgeManager.shared.setHasUnread(true)
+        }
         completionHandler([.banner, .sound, .badge])
     }
 }

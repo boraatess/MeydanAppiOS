@@ -12,14 +12,6 @@ class BlockedUserViewModel: ObservableObject {
     @Published var blockedUsers: [BlockedUser] = []
     @Published var errorMessage: String?
     
-    // Fallback mock data for development / offline
-    static let mockUsers: [BlockedUser] = [
-        BlockedUser(id: "mock-1", fullName: "Ece Çiçek",   username: "@cicekece",   profile: nil),
-        BlockedUser(id: "mock-2", fullName: "Ahmet Yıldız", username: "@ahmetyildiz", profile: nil),
-        BlockedUser(id: "mock-3", fullName: "Zeynep Kaya",  username: "@zeynepkaya",  profile: nil),
-        BlockedUser(id: "mock-4", fullName: "Mert Demir",   username: "@mertdemir",   profile: nil),
-    ]
-    
     init() {
         Task {
             await getBlockedUsers()
@@ -33,13 +25,11 @@ class BlockedUserViewModel: ObservableObject {
         
         do {
             let response = try await UserService.shared.getBlockedUsers()
-            // API boş dönerse veya hata alırsa mock kullan
-            self.blockedUsers = response.blockedUsers.isEmpty ? Self.mockUsers : response.blockedUsers
+            self.blockedUsers = response.blockedUsers
         } catch {
             self.errorMessage = error.localizedDescription
             print("Engellenen kullanıcılar alınırken hata: \(error.localizedDescription)")
-            // Servis hata verirse mock verileri göster
-            self.blockedUsers = Self.mockUsers
+            self.blockedUsers = []
         }
     }
     

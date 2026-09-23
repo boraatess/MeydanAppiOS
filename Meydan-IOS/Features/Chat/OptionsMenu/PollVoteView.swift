@@ -51,25 +51,43 @@ struct PollVoteView: View {
                         }
                     }
                 }
-                
-                Button(action: {
-                    if let index = selectedOption {
-                        viewModel.vote(optionIndex: index)
+
+                if viewModel.isCurrentUserRoomOwner {
+                    Button(action: {
+                        viewModel.endPoll()
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                             viewModel.showPollVoteSheet = false
                         }
+                    }) {
+                        Text("Anketi Sonlandır")
+                            .font(.manrope(.bold, size: 18))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Color(hex: "#FF5C5C"))
+                            .cornerRadius(16)
                     }
-                }) {
-                    Text("Gönder")
-                        .font(.manrope(.bold, size: 18))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(selectedOption != nil ? Color.branding : Color.gray)
-                        .cornerRadius(16)
+                    .padding(.top, 8)
+                } else {
+                    Button(action: {
+                        if let index = selectedOption {
+                            viewModel.vote(optionIndex: index)
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                viewModel.showPollVoteSheet = false
+                            }
+                        }
+                    }) {
+                        Text("Gönder")
+                            .font(.manrope(.bold, size: 18))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(selectedOption != nil ? Color.branding : Color.gray)
+                            .cornerRadius(16)
+                    }
+                    .disabled(selectedOption == nil)
+                    .padding(.top, 8)
                 }
-                .disabled(selectedOption == nil)
-                .padding(.top, 8)
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 14)

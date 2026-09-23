@@ -13,6 +13,7 @@ struct RegisterResponse: Codable {
     let message: String?
     let user: AuthUserMinimal?
     let token: String?
+    let firebaseToken: String?
     let error: String?
     let emailVerified: Bool?
 }
@@ -25,6 +26,7 @@ struct LoginRequest: Codable {
 struct LoginResponse: Decodable {
     let status: String?
     let token: String?
+    let firebaseToken: String?
     let user: AuthUserMinimal?
     let message: String?
     let error: String?
@@ -33,6 +35,7 @@ struct LoginResponse: Decodable {
     private enum CodingKeys: String, CodingKey {
         case status
         case token
+        case firebaseToken
         case accessToken
         case jwt
         case user
@@ -51,6 +54,8 @@ struct LoginResponse: Decodable {
             ?? (try? container.decode(String.self, forKey: .accessToken))
             ?? (try? container.decode(String.self, forKey: .jwt))
             ?? nested?.token
+        firebaseToken = (try? container.decode(String.self, forKey: .firebaseToken))
+            ?? nested?.firebaseToken
         user = (try? container.decode(AuthUserMinimal.self, forKey: .user)) ?? nested?.user
         message = (try? container.decode(String.self, forKey: .message)) ?? nested?.message
         error = try? container.decode(String.self, forKey: .error)
@@ -62,6 +67,7 @@ struct LoginResponse: Decodable {
 private struct LoginResponsePayload: Decodable {
     let status: String?
     let token: String?
+    let firebaseToken: String?
     let user: AuthUserMinimal?
     let message: String?
     let emailVerified: Bool?
@@ -69,6 +75,7 @@ private struct LoginResponsePayload: Decodable {
     private enum CodingKeys: String, CodingKey {
         case status
         case token
+        case firebaseToken
         case accessToken
         case jwt
         case user
@@ -82,6 +89,7 @@ private struct LoginResponsePayload: Decodable {
         token = (try? container.decode(String.self, forKey: .token))
             ?? (try? container.decode(String.self, forKey: .accessToken))
             ?? (try? container.decode(String.self, forKey: .jwt))
+        firebaseToken = try? container.decode(String.self, forKey: .firebaseToken)
         user = try? container.decode(AuthUserMinimal.self, forKey: .user)
         message = try? container.decode(String.self, forKey: .message)
         emailVerified = try? container.decode(Bool.self, forKey: .emailVerified)

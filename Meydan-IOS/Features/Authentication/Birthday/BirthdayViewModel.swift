@@ -62,6 +62,15 @@ class BirthdayViewModel: ObservableObject {
         self.registrationData = registrationData
     }
     
+    func navigateBack() {
+        guard !isLoading else { return }
+        if !authFlowState.path.isEmpty {
+            authFlowState.navigateBack()
+        } else {
+            appFlowState.navigate(to: .auth)
+        }
+    }
+
     func submitRegister() async {
         guard let day = selectedDay, let month = selectedMonth, let year = selectedYear else {
             errorMessage = "Lütfen tüm alanları doldurun."
@@ -104,6 +113,7 @@ class BirthdayViewModel: ObservableObject {
                 let response = try await authService.register(request: data)
                 
                 if let token = response.token, !token.isEmpty {
+                    try await FirebaseAuthSessionManager.signInIfNeeded(withCustomToken: response.firebaseToken)
                     authManager.login(token: token)
                     
                     // Fetch profile to check state

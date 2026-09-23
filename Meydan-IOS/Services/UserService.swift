@@ -31,8 +31,12 @@ protocol UserServiceProtocol {
     func getOtherUser(with id: String) async throws -> OtherUserResponse
     func getUserNetwork(with id: String) async throws -> UserNetworkResponse
     func getMyFavorites() async throws -> FavoriteStreamersResponse
+    func addFavoriteUser(with id: String) async throws -> Empty
+    func removeFavoriteUser(with id: String) async throws -> Empty
     func userFollow(with id: String) async throws -> Empty
     func userUnfollow(with id: String) async throws -> Empty
+    func removeFollower(with id: String) async throws -> Empty
+    func blockUser(with id: String) async throws -> Empty
     func fetchUserShareURL(username: String) async throws -> ShareURLResponse
     func search(query: String) async throws -> UserSearchResponse
 
@@ -68,6 +72,31 @@ class UserService: UserServiceProtocol {
     func userUnfollow(with id: String) async throws -> Alamofire.Empty {
         let url = "\(baseURL)/user/unfollow/\(id)"
         return try await performRequest(url: url, method: .post)
+    }
+
+    func removeFollower(with id: String) async throws -> Alamofire.Empty {
+        let url = "\(baseURL)/user/remove-follower/\(id)"
+        return try await performRequest(url: url, method: .post)
+    }
+
+    func addFavoriteUser(with id: String) async throws -> Alamofire.Empty {
+        let url = "\(baseURL)/user/favorite-streamer/\(id)"
+        return try await performRequest(url: url, method: .post)
+    }
+
+    func removeFavoriteUser(with id: String) async throws -> Alamofire.Empty {
+        let url = "\(baseURL)/user/favorite-streamer/\(id)"
+        return try await performRequest(url: url, method: .post)
+    }
+
+    func blockUser(with id: String) async throws -> Alamofire.Empty {
+        do {
+            let url = "\(baseURL)/users/block"
+            return try await performRequest(url: url, method: .post, parameters: id)
+        } catch {
+            let fallbackURL = "\(baseURL)/user/block/\(id)"
+            return try await performRequest(url: fallbackURL, method: .post)
+        }
     }
 
     func fetchUserShareURL(username: String) async throws -> ShareURLResponse {
@@ -130,8 +159,13 @@ class UserService: UserServiceProtocol {
     }
     
     func unblockUser(with id: String) async throws -> Empty {
-        let url = "\(baseURL)/users/unblock"
-        return try await performRequest(url: url, method: .post, parameters: id)
+        do {
+            let url = "\(baseURL)/users/unblock"
+            return try await performRequest(url: url, method: .post, parameters: id)
+        } catch {
+            let fallbackURL = "\(baseURL)/user/unblock/\(id)"
+            return try await performRequest(url: fallbackURL, method: .post)
+        }
     }
     
     // MARK: - PROFİLE UPDATE SERVİCES-
@@ -282,6 +316,12 @@ class UserService: UserServiceProtocol {
     private func performRequest<T, P>(url: String, method: HTTPMethod, parameters: P) async throws -> T
     where T: Decodable & Sendable, P: Encodable & Sendable {
         return try await withCheckedThrowingContinuation { continuation in
+            print("DEBUG: [\(method.rawValue)] \(url)")
+            if let bodyData = try? JSONEncoder().encode(parameters),
+               let body = String(data: bodyData, encoding: .utf8) {
+                print("DEBUG: Request Body: \(body)")
+            }
+
             AF.request(url,
                        method: method,
                        parameters: parameters,
@@ -290,7 +330,6 @@ class UserService: UserServiceProtocol {
             .validate()
             .responseData { response in
                 // Detailed Logging
-                print("DEBUG: [\(method.rawValue)] \(url)")
                 if let data = response.data, let body = String(data: data, encoding: .utf8) {
                     print("DEBUG: Response Code: \(response.response?.statusCode ?? 0)")
                     print("DEBUG: Response Body: \(body)")

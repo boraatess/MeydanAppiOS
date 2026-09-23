@@ -54,18 +54,38 @@ struct PollResultsView: View {
                                     Text("%\(percentage)")
                                         .font(.manrope(.bold, size: 16))
                                         .foregroundColor(.white)
-                                }
-                                .padding(.horizontal, 16)
-                            }
+	                                }
+	                                .padding(.horizontal, 16)
+	                            }
+	                        }
+	                    }
+	                }
+
+                if viewModel.isCurrentUserRoomOwner && viewModel.pollState == .active {
+                    Divider()
+                        .background(Color.white.opacity(0.12))
+
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            viewModel.endPoll()
                         }
+                    } label: {
+                        Text("Anketi Sonlandır")
+                            .font(.manrope(.medium, size: 16))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 56)
+                            .background(Color(hex: "#363636"))
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     }
+                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 24)
-            .padding(.bottom, 40)
+            .padding(.bottom, 16)
         }
-        .background(Color(hex: "#121212"))
-        .cornerRadius(24)
+        .background(Color(hex: "#1B1B1B"))
+        .cornerRadius(20)
         .padding(.horizontal, 16)
     }
 

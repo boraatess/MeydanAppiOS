@@ -6,6 +6,14 @@ enum NotificationButtonStyle {
     case disabled
 }
 
+enum NotificationActionKind: Equatable {
+    case none
+    case openProfile
+    case openRoom
+    case browseRoom
+    case expiredRoom
+}
+
 struct NotificationItem: Identifiable, Equatable {
     let id: String
     let imageUrl: String
@@ -15,7 +23,11 @@ struct NotificationItem: Identifiable, Equatable {
     var isRead: Bool
     var buttonTitle: String? = nil
     var buttonStyle: NotificationButtonStyle = .none
+    let actionKind: NotificationActionKind
     let roomId: String?
+    let actorUserId: String?
+    let actorName: String?
+    let actorUsername: String?
     let type: String?
     let createdAt: Date?
 }
@@ -107,10 +119,16 @@ struct NotificationResponse: Decodable, Sendable {
     let read: Bool?
     let createdAt: String?
     let roomId: String?
+    let relatedId: String?
     let room: NotificationRoomResponse?
     let sender: HostResponse?
     let user: HostResponse?
     let actor: HostResponse?
+    let follower: HostResponse?
+    let fromUser: HostResponse?
+    let avatar: String?
+    let imageUrl: String?
+    let profileImageURL: String?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -125,10 +143,18 @@ struct NotificationResponse: Decodable, Sendable {
         case read
         case createdAt
         case roomId
+        case relatedId
         case room
         case sender
         case user
         case actor
+        case follower
+        case fromUser
+        case from
+        case avatar
+        case imageUrl
+        case profileImage
+        case profileImageURL
     }
 
     init(from decoder: Decoder) throws {
@@ -149,12 +175,22 @@ struct NotificationResponse: Decodable, Sendable {
         read = try? container.decode(Bool.self, forKey: .read)
         createdAt = try? container.decode(String.self, forKey: .createdAt)
         roomId = try? container.decode(String.self, forKey: .roomId)
+        relatedId = try? container.decode(String.self, forKey: .relatedId)
         room = try? container.decode(NotificationRoomResponse.self, forKey: .room)
         sender = (try? container.decode(HostResponse.self, forKey: .sender))
             ?? (try? container.decode(HostResponse.self, forKey: .user))
             ?? (try? container.decode(HostResponse.self, forKey: .actor))
+            ?? (try? container.decode(HostResponse.self, forKey: .follower))
+            ?? (try? container.decode(HostResponse.self, forKey: .fromUser))
+            ?? (try? container.decode(HostResponse.self, forKey: .from))
         user = try? container.decode(HostResponse.self, forKey: .user)
         actor = try? container.decode(HostResponse.self, forKey: .actor)
+        follower = try? container.decode(HostResponse.self, forKey: .follower)
+        fromUser = try? container.decode(HostResponse.self, forKey: .fromUser)
+        avatar = try? container.decode(String.self, forKey: .avatar)
+        imageUrl = (try? container.decode(String.self, forKey: .imageUrl))
+            ?? (try? container.decode(String.self, forKey: .profileImage))
+        profileImageURL = try? container.decode(String.self, forKey: .profileImageURL)
     }
 }
 
@@ -193,7 +229,11 @@ enum NotificationMapper {
         let actor = response.sender
         let username = actor?.username ?? ""
         let fullName = actor?.fullName ?? ""
-        let avatar = actor?.profile?.avatar ?? ""
+        let avatar = actor?.profileAvatar
+            ?? response.avatar
+            ?? response.imageUrl
+            ?? response.profileImageURL
+            ?? ""
 
         let resolvedTitle: String
         if let title = response.title, !title.isEmpty {
@@ -208,21 +248,44 @@ enum NotificationMapper {
 
         let resolvedMessage = response.message ?? response.body ?? response.content ?? ""
         let createdDate = parseDate(response.createdAt)
-        let resolvedRoomId = response.roomId ?? response.room?.id
-        let normalizedType = (response.type ?? "").uppercased()
+        let searchableTypeText = [
+            response.type,
+            response.title,
+            response.message,
+            response.body,
+            response.content
+        ]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .uppercased()
+        let exactType = response.type?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased() ?? ""
         let roomStatus = response.room?.status
-        let (buttonTitle, buttonStyle) = resolveAction(type: normalizedType, roomStatus: roomStatus)
+        let action = resolveAction(exactType: exactType, roomStatus: roomStatus)
+        let directRoomId = response.roomId ?? response.room?.id
+        let resolvedRoomId: String?
+        switch action.kind {
+        case .openRoom, .browseRoom, .expiredRoom:
+            resolvedRoomId = directRoomId ?? response.relatedId
+        case .none, .openProfile:
+            resolvedRoomId = directRoomId
+        }
 
         return NotificationItem(
             id: response.id,
-            imageUrl: avatar.isEmpty ? iconName(for: normalizedType) : avatar,
+            imageUrl: avatar.isEmpty ? iconName(for: exactType.isEmpty ? searchableTypeText : exactType) : avatar,
             title: resolvedTitle,
             message: resolvedMessage,
             time: createdDate.map { displayFormatter.string(from: $0) } ?? "",
             isRead: response.isRead ?? response.read ?? false,
-            buttonTitle: buttonTitle,
-            buttonStyle: buttonStyle,
+            buttonTitle: action.buttonTitle,
+            buttonStyle: action.buttonStyle,
+            actionKind: action.kind,
             roomId: resolvedRoomId,
+            actorUserId: actor?._id,
+            actorName: fullName.isEmpty ? username : fullName,
+            actorUsername: username,
             type: response.type,
             createdAt: createdDate
         )
@@ -250,31 +313,34 @@ enum NotificationMapper {
 
     private static func iconName(for type: String) -> String {
         switch type {
-        case "MENTION", "ROOM_MENTION":
-            return "person.crop.square.fill"
-        case "ROOM_INVITE", "INVITE":
-            return "person.badge.plus"
-        case "ROOM_STARTED", "ROOM_LIVE", "STREAM_STARTED":
-            return "person.circle.fill"
-        case "ROOM_UPDATED", "ROOM_SCHEDULED":
+        case let value where value.contains("FOLLOW"):
             return "person.crop.circle.fill"
-        case "ROOM_ENDED", "STREAM_ENDED":
-            return "person.fill"
+        case let value where value.contains("MENTION"):
+            return "person.crop.square.fill"
+        case let value where value.contains("INVITE"):
+            return "person.badge.plus"
+        case let value where value.contains("LIVE"):
+            return "person.circle.fill"
+        case let value where value.contains("PLANNED") || value.contains("INFO"):
+            return "person.crop.circle.fill"
         default:
             return "person.crop.circle.fill"
         }
     }
 
-    private static func resolveAction(type: String, roomStatus: Int?) -> (String?, NotificationButtonStyle) {
-        if type.contains("END") || roomStatus == 2 {
-            return ("Sohbet Sona Erdi", .disabled)
+    private static func resolveAction(exactType: String, roomStatus: Int?) -> (buttonTitle: String?, buttonStyle: NotificationButtonStyle, kind: NotificationActionKind) {
+        switch exactType {
+        case "FOLLOW":
+            return ("Gözat", .active, .openProfile)
+        case "LIVE", "INVITE":
+            if roomStatus == 2 {
+                return ("Sohbet Sona Erdi", .disabled, .expiredRoom)
+            }
+            return ("Sohbete Katıl", .active, .openRoom)
+        case "PLANNED", "MENTION", "INFO_ONLY":
+            return (nil, .none, .none)
+        default:
+            return (nil, .none, .none)
         }
-        if type.contains("INVITE") || type.contains("START") || type.contains("LIVE") {
-            return ("Sohbete Katıl", .active)
-        }
-        if type.contains("MENTION") {
-            return ("Gözat", .active)
-        }
-        return (nil, .none)
     }
 }

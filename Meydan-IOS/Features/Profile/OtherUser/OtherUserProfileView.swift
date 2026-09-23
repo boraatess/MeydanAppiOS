@@ -3,9 +3,10 @@ import SwiftUI
 struct OtherUserProfileView: View {
 
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var pushManager = PushNotificationManager.shared
     @StateObject private var viewModel: OtherUserProfileViewModel
     @State private var showOptions = false
-    @State private var selectedTab: ProfileTab = .scheduled
+    @State private var showReportSheet = false
     
     let userId: String
     let name: String
@@ -22,10 +23,6 @@ struct OtherUserProfileView: View {
                 username: username
             )
         )
-    }
-    
-    enum ProfileTab {
-        case scheduled, past
     }
     
     var body: some View {
@@ -62,8 +59,8 @@ struct OtherUserProfileView: View {
                             .background(RoundedRectangle(cornerRadius: 12).fill(Color.clear))
                     }
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 20)
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
                 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
@@ -79,14 +76,26 @@ struct OtherUserProfileView: View {
                                     
                                     HStack(spacing: 20) {
                                         UserStatItem(count: "\(viewModel.userProfile.streamCount)", label: "yayın")
-                                        NavigationLink(
-                                            value: ProfileNavigation.followers(userId: viewModel.userProfile.id)
-                                        ) {
+                                        NavigationLink {
+                                            FollowRelationsView(
+                                                viewModel: FollowRelationsViewModel(
+                                                    type: .followers,
+                                                    userId: viewModel.userProfile.id
+                                                ),
+                                                showsUserOptions: false
+                                            )
+                                        } label: {
                                             UserStatItem(count: "\(viewModel.userProfile.followersCount)", label: "takipçi")
                                         }
-                                        NavigationLink(
-                                            value: ProfileNavigation.following(userId: viewModel.userProfile.id)
-                                        ) {
+                                        NavigationLink {
+                                            FollowRelationsView(
+                                                viewModel: FollowRelationsViewModel(
+                                                    type: .following,
+                                                    userId: viewModel.userProfile.id
+                                                ),
+                                                showsUserOptions: false
+                                            )
+                                        } label: {
                                             UserStatItem(count: "\(viewModel.userProfile.followingCount)", label: "takip")
                                         }
                                     }
@@ -106,27 +115,35 @@ struct OtherUserProfileView: View {
                             
                             // Follow Button
                             Button {
-                                Task { await viewModel.toggleFollow() }
+                                Task {
+                                    if viewModel.isBlocked {
+                                        _ = await viewModel.unblockUser()
+                                    } else {
+                                        await viewModel.toggleFollow()
+                                    }
+                                }
                             } label: {
                                 Group {
-                                    if viewModel.isFollowRequestInProgress {
+                                    if viewModel.isFollowRequestInProgress || viewModel.isBlockingUser {
                                         ProgressView().tint(.white)
                                     } else {
-                                        Text(viewModel.isFollowing ? "Takip Ediliyor" : "Takip Et")
+                                        Text(followButtonTitle)
                                     }
                                 }
                                     .font(.manrope(.bold, size: 16))
                                     .foregroundColor(.white)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 14)
-                                    .background(viewModel.isFollowing ? Color.white.opacity(0.1) : Color.white.opacity(0.15))
+                                    .background(viewModel.isFollowing || viewModel.isBlocked ? Color.white.opacity(0.1) : Color.white.opacity(0.15))
                                     .cornerRadius(12)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 12)
                                             .stroke(Color.white.opacity(0.1), lineWidth: 1)
                                     )
                             }
-                            .disabled(viewModel.isFollowRequestInProgress || viewModel.isLoading)
+                            .buttonStyle(.plain)
+                            .contentShape(Rectangle())
+                            .disabled(viewModel.isFollowRequestInProgress || viewModel.isBlockingUser || !viewModel.isProfileReady)
 
                             if let errorMessage = viewModel.errorMessage {
                                 Text(errorMessage)
@@ -135,26 +152,25 @@ struct OtherUserProfileView: View {
                                     .frame(maxWidth: .infinity, alignment: .center)
                             }
                         }
-                        .padding(.horizontal, 24)
+                        .padding(.horizontal, 16)
                         .padding(.top, 16)
                         
-                        // Tabs Section
-                        VStack(spacing: 0) {
-                            HStack(spacing: 0) {
-                                HeaderTabButton(title: "Planlanan Yayınlar", isSelected: selectedTab == .scheduled) {
-                                    selectedTab = .scheduled
-                                }
-                                HeaderTabButton(title: "Geçmiş Yayınlar", isSelected: selectedTab == .past) {
-                                    selectedTab = .past
-                                }
-                            }
-                            .padding(.horizontal, 24)
-                            
+                        VStack(spacing: 12) {
+                            Text("Canlı & Planlanan Yayınlar")
+                                .font(.manrope(.bold, size: 18))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.horizontal, 16)
+
                             profileContent
                         }
                     }
                 }
+                .pullToRefresh {
+                    await viewModel.load(force: true)
+                }
             }
+            .padding(.horizontal, 16)
             .blur(radius: showOptions ? 2 : 0)
             
             // Options Overlay
@@ -165,15 +181,65 @@ struct OtherUserProfileView: View {
                         withAnimation { showOptions = false }
                     }
                 
-                UserOptionsPopUp(isFollowing: viewModel.isFollowing, onDismiss: { withAnimation { showOptions = false } })
+                UserOptionsPopUp(
+                    isFollowing: viewModel.isFollowing,
+                    isFavorite: viewModel.isFavorite,
+                    isBlocked: viewModel.isBlocked,
+                    isFavoriteRequestInProgress: viewModel.isFavoriteRequestInProgress,
+                    isBlockingUser: viewModel.isBlockingUser,
+                    onDismiss: { withAnimation { showOptions = false } },
+                    onFavoriteTap: {
+                        withAnimation { showOptions = false }
+                        Task { await viewModel.toggleFavorite() }
+                    },
+                    onShareTap: {
+                        withAnimation { showOptions = false }
+                        viewModel.fetchShareURL()
+                    },
+                    onFollowTap: {
+                        withAnimation { showOptions = false }
+                        Task {
+                            if viewModel.isBlocked {
+                                _ = await viewModel.unblockUser()
+                            } else {
+                                await viewModel.toggleFollow()
+                            }
+                        }
+                    },
+                    onReportTap: {
+                        withAnimation { showOptions = false }
+                        showReportSheet = true
+                    },
+                    onBlockTap: {
+                        withAnimation { showOptions = false }
+                        Task {
+                            _ = await viewModel.toggleBlock()
+                        }
+                    }
+                )
                     .transition(.scale(scale: 0.9, anchor: .topTrailing).combined(with: .opacity))
                     .zIndex(100)
             }
         }
-        .padding(.horizontal, 16)
         .navigationBarHidden(true)
         .task {
             await viewModel.load()
+        }
+        .sheet(isPresented: $viewModel.showShareSheet) {
+            if let url = viewModel.shareURL {
+                ShareActivityView(items: [url])
+            }
+        }
+        .sheet(isPresented: $showReportSheet) {
+            ReportView(
+                viewModel: ReportViewModel(
+                    context: .user(
+                        userId: viewModel.userProfile.id,
+                        username: viewModel.userProfile.username.trimmingCharacters(in: CharacterSet(charactersIn: "@"))
+                    )
+                ),
+                onDismiss: { showReportSheet = false }
+            )
         }
     }
 
@@ -207,39 +273,57 @@ struct OtherUserProfileView: View {
 
     @ViewBuilder
     private var profileContent: some View {
-        if viewModel.isLoading && viewModel.scheduledBroadcasts.isEmpty && viewModel.pastBroadcasts.isEmpty {
+        if viewModel.isLoading && viewModel.scheduledBroadcasts.isEmpty {
             ProgressView()
                 .tint(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 80)
         } else {
-            let broadcastsAreEmpty = selectedTab == .scheduled
-                ? viewModel.scheduledBroadcasts.isEmpty
-                : viewModel.pastBroadcasts.isEmpty
-
-            if broadcastsAreEmpty {
+            if viewModel.scheduledBroadcasts.isEmpty {
                 VStack {
                     Spacer(minLength: 100)
                     EmptyProfileStateView()
                     Spacer(minLength: 100)
                 }
                 .frame(maxWidth: .infinity)
-            } else if selectedTab == .scheduled {
-                LazyVStack(spacing: 12) {
-                    ForEach(viewModel.scheduledBroadcasts) { broadcast in
-                        BroadcastCardView(broadcast: .scheduled(broadcast), onMenuTap: {})
-                    }
-                }
-                .padding(.top, 12)
             } else {
                 LazyVStack(spacing: 12) {
-                    ForEach(viewModel.pastBroadcasts) { broadcast in
-                        BroadcastCardView(broadcast: .past(broadcast), onMenuTap: {})
+                    ForEach(viewModel.scheduledBroadcasts) { broadcast in
+                        BroadcastCardView(
+                            broadcast: .scheduled(broadcast),
+                            showsMenuButton: false,
+                            showsNotificationButton: true,
+                            isNotificationSubscribed: pushManager.isSubscribedToRoom(broadcast.id),
+                            onNotificationTap: {
+                                toggleRoomNotification(roomId: broadcast.id)
+                            },
+                            onMenuTap: {}
+                        )
+                        .padding(.horizontal, 4)
                     }
                 }
                 .padding(.top, 12)
             }
         }
+    }
+
+    private func toggleRoomNotification(roomId: String) {
+        Task {
+            await pushManager.requestPermissionAndRegister()
+            do {
+                try await pushManager.toggleRoomSubscription(roomId: roomId)
+            } catch {
+                print("DEBUG: Oda bildirim aboneliği değiştirilemedi: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private var followButtonTitle: String {
+        if viewModel.isBlocked {
+            return "Engellendi"
+        }
+
+        return viewModel.isFollowing ? "Takip Ediliyor" : "Takip Et"
     }
 }
 
@@ -255,24 +339,6 @@ private struct UserStatItem: View {
             Text(label)
                 .font(.manrope(.medium, size: 12))
                 .foregroundColor(.white.opacity(0.6))
-        }
-    }
-}
-
-private struct HeaderTabButton: View {
-    let title: String
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 12) {
-                Text(title)
-                    .font(.manrope(.bold, size: 16))
-                    .foregroundColor(isSelected ? Color.branding : .white.opacity(0.6))
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
         }
     }
 }
@@ -294,21 +360,54 @@ private struct EmptyProfileStateView: View {
 
 private struct UserOptionsPopUp: View {
     let isFollowing: Bool
+    let isFavorite: Bool
+    let isBlocked: Bool
+    let isFavoriteRequestInProgress: Bool
+    let isBlockingUser: Bool
     let onDismiss: () -> Void
+    let onFavoriteTap: () -> Void
+    let onShareTap: () -> Void
+    let onFollowTap: () -> Void
+    let onReportTap: () -> Void
+    let onBlockTap: () -> Void
     
     var body: some View {
         VStack(spacing: 0) {
-            OptionItem(icon: "star", title: "Favorilere Ekle")
-            Divider().background(Color.white.opacity(0.1))
-            OptionItem(icon: "share", title: "Hesabı Paylaş")
-            Divider().background(Color.white.opacity(0.1))
-            OptionItem(icon: "person.badge.minus", title: "Takipten Çık")
-            Divider().background(Color.white.opacity(0.1))
-            OptionItem(icon: "Danger Circle", title: "Şikayet Et")
-            Divider().background(Color.white.opacity(0.1))
-            OptionItem(icon: "Shield Fail", title: "Engelle", isDestructive: false)
+            if isBlocked {
+                OptionItem(
+                    icon: "Shield Fail",
+                    title: isBlockingUser ? "İşleniyor..." : "Engeli Kaldır",
+                    isDestructive: true,
+                    action: onBlockTap
+                )
+            } else {
+                OptionItem(
+                    icon: isFavorite ? "star.fill" : "star",
+                    title: isFavoriteRequestInProgress
+                        ? "İşleniyor..."
+                        : (isFavorite ? "Favorilerden Çıkar" : "Favorilere Ekle"),
+                    action: onFavoriteTap
+                )
+                Divider().background(Color.white.opacity(0.1))
+                OptionItem(icon: "share", title: "Hesabı Paylaş", action: onShareTap)
+                Divider().background(Color.white.opacity(0.1))
+                OptionItem(
+                    icon: isFollowing ? "person.badge.minus" : "person.badge.plus",
+                    title: isFollowing ? "Takipten Çık" : "Takip Et",
+                    action: onFollowTap
+                )
+                Divider().background(Color.white.opacity(0.1))
+                OptionItem(icon: "Danger Circle", title: "Şikayet Et", action: onReportTap)
+                Divider().background(Color.white.opacity(0.1))
+                OptionItem(
+                    icon: "Shield Fail",
+                    title: isBlockingUser ? "İşleniyor..." : "Engelle",
+                    isDestructive: true,
+                    action: onBlockTap
+                )
+            }
         }
-        .frame(width: 320)
+        .frame(maxWidth: 320)
         .background(RoundedRectangle(cornerRadius: 20).fill(Color(red: 0.12, green: 0.12, blue: 0.12)))
         .overlay(RoundedRectangle(cornerRadius: 20).stroke(Color.white.opacity(0.1), lineWidth: 1))
         .padding(.top, 80)
@@ -316,8 +415,8 @@ private struct UserOptionsPopUp: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
     }
     
-    private func OptionItem(icon: String, title: String, isDestructive: Bool = false) -> some View {
-        Button(action: onDismiss) {
+    private func OptionItem(icon: String, title: String, isDestructive: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
             HStack(spacing: 12) {
                 Spacer()
                 

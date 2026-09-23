@@ -3,15 +3,14 @@ import SwiftUI
 struct ChatView: View {
     @StateObject private var viewModel: ChatViewModel
     @StateObject private var interstitialAdManager = ChatInterstitialAdManager()
-    @State private var didRequestEntryAd = false
     
     @State private var navigationPath = NavigationPath()
+    @State private var selectedParticipantProfile: Participant?
+    @State private var isPresentingParticipantProfile = false
     
     // Seçilen mesaj balonunun ekrandaki konumunu tutacak state
     @State private var selectedMessageFrame: CGRect = .zero
     
-    // Projenin ilerleyen aşamalarında bu bilgi giriş yapan kullanıcıdan gelecektir.
-    @State private var currentUserRole: AuthorRole = .chatOwner
     @Environment(\.dismiss) private var dismiss
     
     private let menuWidth: CGFloat = 220
@@ -19,13 +18,15 @@ struct ChatView: View {
     init(
         roomId: String = "test_room_123",
         roomTitle: String = "Türkiye - İspanya Maçı",
-        roomOwnerUsername: String = "rumeysasacak"
+        roomOwnerUsername: String = "boraates",
+        roomOwnerUserId: String = ""
     ) {
         _viewModel = StateObject(
             wrappedValue: ChatViewModel(
                 roomId: roomId,
                 roomTitle: roomTitle,
-                roomOwnerUsername: roomOwnerUsername
+                roomOwnerUsername: roomOwnerUsername,
+                roomOwnerUserId: roomOwnerUserId
             )
         )
     }
@@ -40,9 +41,7 @@ struct ChatView: View {
                     title: viewModel.roomTitle,
                     ownerUsername: viewModel.roomOwnerUsername,
                     onBackTapped: {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                            viewModel.showExitConfirmation = true
-                        }
+                        viewModel.handleBackTapped()
                     },
                     onMoreButtonTapped: {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
@@ -51,62 +50,90 @@ struct ChatView: View {
                     }
                 )
 
-                AdMobCompactBannerView(adUnitID: AdMobConfig.chatBannerAdUnitID)
-                    .padding(.top, 8)
-                    .padding(.bottom, 6)
-                
-                if viewModel.pollState != .none {
-                    pollNotificationBar
-                }
-                
                 ZStack(alignment: .top) {
                     VStack(spacing: 0) {
-                        messageScrollView
-                        
-                        messageInputView
-                            .padding(.horizontal, 16)
+                        AdMobCompactBannerView(adUnitID: AdMobConfig.chatBannerAdUnitID)
+                            .padding(.top, 8)
+                            .padding(.bottom, 6)
+
+                        if viewModel.pollState != .none {
+                            pollNotificationBar
+                        }
+
+                        if viewModel.isRoomClosing {
+                            roomClosingInfoBar
+                        }
+
+                        ZStack(alignment: .top) {
+                            VStack(spacing: 0) {
+                                messageScrollView
+
+                                messageInputView
+                                    .padding(.horizontal, 16)
+                            }
+                        }
                     }
-                    
-                    // Options menüsü arkasını karartma kaplı overlay
+
                     if viewModel.showMoreOptionsMenu {
-                        Color.black.opacity(0.55)
-                            .ignoresSafeArea()
+                        Color.black.opacity(0.62)
+                            .ignoresSafeArea(edges: .bottom)
                             .onTapGesture {
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                                     viewModel.showMoreOptionsMenu = false
                                 }
                             }
                             .transition(.opacity)
-                    }
-                    
-                    // Options menüsü yukarıdan aşağı kayarak açılır
-                    if viewModel.showMoreOptionsMenu {
+
                         ChatRoomOptionsMenuView(viewModel: viewModel)
-                            .padding(.horizontal, 8)
+                            .padding(.horizontal, 22)
+                            .padding(.top, 8)
                             .transition(.move(edge: .top).combined(with: .opacity))
-                            .zIndex(10)
                     }
                 }
+                .zIndex(viewModel.showMoreOptionsMenu ? 20 : 0)
             }
             .navigationBarHidden(true)
-            .ignoresSafeArea(.keyboard, edges: .bottom)
         }
         .overlay(menuOverlay)
+        .dismissKeyboardOnTap()
         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: viewModel.showMessageActions)
         .onAppear {
             viewModel.connectToWebSocket()
-
-            guard !didRequestEntryAd else { return }
-            didRequestEntryAd = true
-            interstitialAdManager.present()
         }
-        .onDisappear { viewModel.disconnectFromWebSocket() }
+        .onDisappear {
+            if !isPresentingParticipantProfile {
+                viewModel.disconnectFromWebSocket()
+                Task {
+                    await viewModel.leaveRoomViewersIfNeeded(reason: "chat_onDisappear")
+                }
+            }
+        }
         .overlay(popupOverlay)
+        .fullScreenCover(
+            item: $selectedParticipantProfile,
+            onDismiss: {
+                isPresentingParticipantProfile = false
+                viewModel.showParticipantsSheet = true
+            }
+        ) { participant in
+            NavigationStack {
+                OtherUserProfileView(
+                    userId: participant.userId,
+                    name: participant.name,
+                    username: participant.username
+                )
+            }
+        }
+        .sheet(isPresented: $viewModel.showShareSheet) {
+            if let url = viewModel.shareURL {
+                ShareActivityView(items: [url])
+            }
+        }
     }
     
     @ViewBuilder
     private var popupOverlay: some View {
-        if viewModel.showInviteSheet || viewModel.showParticipantsSheet || viewModel.showCreatePollSheet || viewModel.showPollVoteSheet || viewModel.showPollResultsSheet || viewModel.showReportSheet || viewModel.showExitConfirmation || viewModel.showKickAlert {
+        if viewModel.showInviteSheet || viewModel.showParticipantsSheet || viewModel.showCreatePollSheet || viewModel.showPollVoteSheet || viewModel.showPollResultsSheet || viewModel.showReportSheet || viewModel.showExitConfirmation || viewModel.showKickAlert || viewModel.showRoomEndedInfo {
             ZStack {
                 // Dimming Background
                 Color.black.opacity(0.55)
@@ -120,7 +147,7 @@ struct ChatView: View {
                             viewModel.showPollResultsSheet = false
                             viewModel.showReportSheet = false
                             viewModel.showExitConfirmation = false
-                            // KickAlert tapa ile kapatılmasın (yalnızca buton ile)
+                            // KickAlert ve oda sonlandı bilgisi tapa ile kapatılmasın (yalnızca buton ile)
                         }
                     }
                 // Top Popups
@@ -130,7 +157,13 @@ struct ChatView: View {
                             if viewModel.showInviteSheet {
                                 InviteView(viewModel: viewModel)
                             } else if viewModel.showParticipantsSheet {
-                                ParticipantsView(viewModel: viewModel)
+                                ParticipantsView(viewModel: viewModel) { participant in
+                                    isPresentingParticipantProfile = true
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                        viewModel.showParticipantsSheet = false
+                                    }
+                                    selectedParticipantProfile = participant
+                                }
                             } else if viewModel.showCreatePollSheet {
                                 CreatePollView(viewModel: viewModel)
                             } else if viewModel.showPollVoteSheet {
@@ -168,6 +201,10 @@ struct ChatView: View {
                     kickAlertView
                         .transition(.scale(scale: 0.95).combined(with: .opacity))
                 }
+                if viewModel.showRoomEndedInfo {
+                    roomEndedInfoView
+                        .transition(.scale(scale: 0.95).combined(with: .opacity))
+                }
             }
             .zIndex(100)
         }
@@ -179,7 +216,7 @@ struct ChatView: View {
     
     @ViewBuilder
     private var exitConfirmationPopup: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 26) {
             HStack {
                 Spacer()
                 Button(action: {
@@ -192,11 +229,28 @@ struct ChatView: View {
                         .foregroundColor(.white)
                 }
             }
-            Text("Sohbetten çıkmak istediğinize\nemin misiniz?")
-                .font(.manrope(.bold, size: 20))
-                .foregroundColor(.white)
-                .multilineTextAlignment(.center)
-                .lineSpacing(6)
+
+            if viewModel.isCurrentUserRoomOwner {
+                VStack(spacing: 24) {
+                    Text("Sohbetten çıktığınızda 5 dk\niçinde sohbet odası\nsonlandırılacak!")
+                        .font(.manrope(.bold, size: 18))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(7)
+
+                    Text("Sohbetten çıkmak istediğinize\nemin misiniz?")
+                        .font(.manrope(.bold, size: 18))
+                        .foregroundColor(.white)
+                        .multilineTextAlignment(.center)
+                        .lineSpacing(7)
+                }
+            } else {
+                Text(viewModel.exitConfirmationMessage)
+                    .font(.manrope(.bold, size: 20))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(6)
+            }
             
             HStack(spacing: 16) {
                 Button(action: {
@@ -205,30 +259,68 @@ struct ChatView: View {
                     }
                 }) {
                     Text("Hayır")
-                        .font(.manrope(.bold, size: 16))
+                        .font(.manrope(.bold, size: 17))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 52)
+                        .frame(height: 58)
                         .background(Color(hex: "#363636"))
                         .cornerRadius(16)
                 }
                 Button(action: {
                     leaveChat()
                 }) {
-                    Text("Evet")
-                        .font(.manrope(.bold, size: 16))
+                    Text(viewModel.isEndingRoom ? "Sonlandırılıyor..." : "Evet")
+                        .font(.manrope(.bold, size: 17))
                         .foregroundColor(.white)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 52)
+                        .frame(height: 58)
                         .background(Color(hex: "#FF5C5C"))
                         .cornerRadius(16)
                 }
+                .disabled(viewModel.isEndingRoom)
             }
         }
-        .padding(24)
+        .padding(.horizontal, 20)
+        .padding(.top, 22)
+        .padding(.bottom, 20)
         .background(Color(hex: "#1B1B1B"))
-        .cornerRadius(24)
+        .cornerRadius(20)
         .padding(.horizontal, 24)
+    }
+
+    @ViewBuilder
+    private var roomEndedInfoView: some View {
+        VStack(spacing: 20) {
+            Text("Bulunduğunuz sohbet odası\n\(formattedOwnerUsername) tarafından\nsonlandırıldı.")
+                .font(.manrope(.bold, size: 20))
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+                .lineSpacing(5)
+
+            Button(action: {
+                leaveChat()
+            }) {
+                Text("Anasayfaya Dön")
+                    .font(.manrope(.bold, size: 16))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 56)
+                    .background(Color(hex: "#FF5C5C"))
+                    .cornerRadius(18)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 22)
+        .background(Color(hex: "#1B1B1B"))
+        .cornerRadius(16)
+        .padding(.horizontal, 24)
+    }
+
+    private var formattedOwnerUsername: String {
+        let username = (viewModel.roomClosedByUsername ?? viewModel.roomOwnerUsername)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !username.isEmpty else { return "@moderatör" }
+        return username.hasPrefix("@") ? username : "@\(username)"
     }
     
     @ViewBuilder
@@ -298,7 +390,10 @@ struct ChatView: View {
                 .onTapGesture { viewModel.dismissMessageActions() }
 
             if let selectedMessage = viewModel.selectedMessage {
-                MessageActionMenuView(viewModel: viewModel, currentUserRole: currentUserRole)
+                MessageActionMenuView(
+                    viewModel: viewModel,
+                    currentUserRole: viewModel.isCurrentUserRoomOwner ? .chatOwner : .user
+                )
                     .frame(width: menuWidth)
                     .position(
                         x: calculateMenuPosition(for: selectedMessageFrame, isMyMessage: selectedMessage.isSentByUser).x,
@@ -312,7 +407,9 @@ struct ChatView: View {
     @ViewBuilder
     private var pollNotificationBar: some View {
         Button(action: {
-            if viewModel.pollState == .active {
+            if viewModel.pollState == .active && viewModel.isCurrentUserRoomOwner {
+                viewModel.showPollResultsSheet = true
+            } else if viewModel.pollState == .active {
                 viewModel.showPollVoteSheet = true
             } else if viewModel.pollState == .ended {
                 viewModel.showPollResultsSheet = true
@@ -364,6 +461,45 @@ struct ChatView: View {
         .transition(.move(edge: .top).combined(with: .opacity))
     }
 
+    @ViewBuilder
+    private var roomClosingInfoBar: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "clock.fill")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundColor(Color(hex: "#FF5C5C"))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Moderatör odadan ayrıldı")
+                    .font(.manrope(.bold, size: 14))
+                    .foregroundColor(.white)
+
+                if let countdown = viewModel.closingCountdownText {
+                    Text("Oda \(countdown) içinde kapanacak.")
+                        .font(.manrope(.medium, size: 12))
+                        .foregroundColor(.white.opacity(0.72))
+                } else {
+                    Text("Oda 5 dakika içinde kapanacak.")
+                        .font(.manrope(.medium, size: 12))
+                        .foregroundColor(.white.opacity(0.72))
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color(hex: "#1B1B1B"))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color(hex: "#FF5C5C").opacity(0.35), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal, 16)
+        .padding(.top, 2)
+        .padding(.bottom, 8)
+        .transition(.move(edge: .top).combined(with: .opacity))
+    }
+
     private var pollNotificationTitle: String {
         if viewModel.pollState == .active {
             let question = viewModel.activePollQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -377,11 +513,15 @@ struct ChatView: View {
     private var messageScrollView: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 12) {
-                    ForEach(viewModel.messages) { message in
+                LazyVStack(spacing: 6) {
+                    ForEach(Array(viewModel.messages.enumerated()), id: \.element.id) { index, message in
+                        let previousMessage = index > 0 ? viewModel.messages[index - 1] : nil
+                        let isGroupedWithPrevious = previousMessage.map { isSameMessageGroup(current: message, previous: $0) } ?? false
+
                         MessageBubble(
                             message: message,
-                            isSelected: viewModel.selectedMessage?.id == message.id
+                            isSelected: viewModel.selectedMessage?.id == message.id,
+                            isGroupedWithPrevious: isGroupedWithPrevious
                         )
                         .id(message.id)
                         .onLongPressGesture {
@@ -406,31 +546,38 @@ struct ChatView: View {
             }
         }
     }
+
+    private func isSameMessageGroup(current: Message, previous: Message) -> Bool {
+        current.isSentByUser == previous.isSentByUser
+            && messageGroupKey(current) == messageGroupKey(previous)
+    }
+
+    private func messageGroupKey(_ message: Message) -> String {
+        if let senderId = message.senderId?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !senderId.isEmpty {
+            return "id:\(senderId)"
+        }
+
+        if let username = message.resolvedUsername?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+           !username.isEmpty {
+            return "username:\(username)"
+        }
+
+        return message.isSentByUser ? "current-user" : "unknown"
+    }
     
     private var messageInputView: some View {
-        HStack(spacing: 12) {
-            // Artı butonu (Ekle)
-            Button(action: {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                    viewModel.showAttachmentMenu.toggle()
-                }
-            }) {
-                Image("sentiment_satisfied")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 32, height: 32)
-                    .background(Color.white.opacity(0.1))
-                    .clipShape(Circle())
-            }
-            
+        HStack(alignment: .bottom, spacing: 12) {
             // Metin alanı
-            TextField("Sohbet Et", text: $viewModel.currentMessageText)
+            TextField("Sohbet Et", text: $viewModel.currentMessageText, axis: .vertical)
                 .font(.manrope(.medium, size: 14))
                 .foregroundColor(.white)
                 .accentColor(.branding)
+                .lineLimit(1...4)
                 .onChange(of: viewModel.currentMessageText) { newValue in
                     viewModel.handleTextChange(newValue)
                 }
+                .padding(.vertical, 2)
             
             Spacer()
             
@@ -438,23 +585,27 @@ struct ChatView: View {
             Button(action: viewModel.sendMessage) {
                 Image("Send")
                     .renderingMode(.template)
-                    .foregroundColor(viewModel.currentMessageText.trimmingCharacters(in: .whitespaces).isEmpty ? .gray : .white)
+                    .foregroundColor(viewModel.currentMessageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? .gray : .white)
                     .font(.system(size: 18))
+                    .frame(width: 28, height: 28)
             }
             .foregroundStyle(.white)
-            .disabled(viewModel.currentMessageText.trimmingCharacters(in: .whitespaces).isEmpty)
+            .disabled(viewModel.currentMessageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .animation(.easeInOut, value: viewModel.currentMessageText.isEmpty)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.vertical, 10)
         .background(Color(red: 54/255, green: 54/255, blue: 54/255, opacity: 1))
         .cornerRadius(16, corners: .allCorners)
+        .alert("Metninizi düzenleyin", isPresented: Binding(
+            get: { viewModel.messageValidationError != nil },
+            set: { if !$0 { viewModel.messageValidationError = nil } }
+        )) {
+            Button("Tamam", role: .cancel) { viewModel.messageValidationError = nil }
+        } message: {
+            Text(viewModel.messageValidationError ?? "")
+        }
         .overlay(alignment: .bottomLeading) {
-            if viewModel.showAttachmentMenu {
-                attachmentMenuView
-                    .offset(y: -70)
-            }
-            
             if viewModel.showMentionList {
                 mentionListView
                     .offset(y: -220)
@@ -511,54 +662,13 @@ struct ChatView: View {
         .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
     }
 
-    @ViewBuilder
-    private var attachmentMenuView: some View {
-        VStack(spacing: 12) {
-            AttachmentOption(icon: "person.2.fill", title: "Katılımcılar") {
-                viewModel.showAttachmentMenu = false
-                viewModel.showParticipantsSheet = true
-            }
-            AttachmentOption(icon: "chart.bar.fill", title: "Anket Oluştur") {
-                viewModel.showAttachmentMenu = false
-                viewModel.showCreatePollSheet = true
-            }
-            AttachmentOption(icon: "person.badge.plus", title: "Davet Et") {
-                viewModel.showAttachmentMenu = false
-                viewModel.showInviteSheet = true
-            }
-        }
-        .padding(12)
-        .background(Color(hex: "#1B1B1B"))
-        .cornerRadius(16)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
-        )
-        .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
-        .transition(.scale(scale: 0.9).combined(with: .opacity))
-    }
-
-    private func AttachmentOption(icon: String, title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 16))
-                    .foregroundColor(.white)
-                    .frame(width: 30)
-                
-                Text(title)
-                    .font(.manrope(.medium, size: 14))
-                    .foregroundColor(.white)
-                
-                Spacer()
-            }
-        }
-    }
-
     private func leaveChat() {
-        viewModel.showExitConfirmation = false
-        interstitialAdManager.present {
-            dismiss()
+        Task {
+            await viewModel.endRoomIfNeededBeforeExit()
+            viewModel.showExitConfirmation = false
+            interstitialAdManager.present {
+                dismiss()
+            }
         }
     }
 }
@@ -648,12 +758,20 @@ struct CustomChatHeaderView: View {
 struct MessageBubble: View {
     let message: Message
     var isSelected: Bool
+    var isGroupedWithPrevious: Bool = false
+
+    private var shouldShowSenderInfo: Bool {
+        !message.isSentByUser && !isGroupedWithPrevious
+    }
     
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
             if !message.isSentByUser {
                 // Diğer kullanıcıların avatarı
-                if let avatarURL = message.authorAvatar, let url = URL(string: avatarURL) {
+                if !shouldShowSenderInfo {
+                    Color.clear
+                        .frame(width: 32, height: 32)
+                } else if let avatarURL = message.authorAvatar, let url = URL(string: avatarURL) {
                     AsyncImage(url: url) { phase in
                         switch phase {
                         case .success(let image):
@@ -678,38 +796,26 @@ struct MessageBubble: View {
                 Spacer(minLength: 60)
             }
             
-            VStack(alignment: message.isSentByUser ? .trailing : .leading, spacing: 4) {
-                // Başka kişinin mesajındaki @ isim
-                if let author = message.resolvedUsername {
-                    HStack(spacing: 4) {
-                        
-                        if message.authorRole == .chatOwner {
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 8))
-                                .foregroundColor(.yellow)
-                        }
-                        
-                        Text("@\(author.lowercased().replacingOccurrences(of: " ", with: ""))")
-                            .font(.poppins(.semiBold, size: 11))
-                            .foregroundColor(Color.branding)
-                    }
-                    .padding(.leading, 4)
+            VStack(alignment: message.isSentByUser ? .trailing : .leading, spacing: 6) {
+                if shouldShowSenderInfo, let author = message.resolvedUsername {
+                    usernameView(author)
                 }
-                
+
                 Text(message.text)
                     .font(.manrope(.medium, size: 14))
                     .foregroundColor(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(
-                        message.isSentByUser
-                        ? Color(hex: "#2C2D2F")
-                        : Color(hex: "#1B1B1B")
-                    )
-                    .cornerRadius(18, corners: message.isSentByUser
-                        ? [.topLeft, .bottomRight, .bottomLeft]
-                        : [.bottomLeft, .topRight, .bottomRight])
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, shouldShowSenderInfo && message.resolvedUsername != nil ? 10 : 11)
+            .background(
+                message.isSentByUser
+                ? Color(hex: "#2C2D2F")
+                : Color(hex: "#1B1B1B")
+            )
+            .cornerRadius(18, corners: message.isSentByUser
+                ? [.topLeft, .bottomRight, .bottomLeft]
+                : [.bottomLeft, .topRight, .bottomRight])
             .background {
                 GeometryReader { geometry in
                     if isSelected {
@@ -722,6 +828,21 @@ struct MessageBubble: View {
             if !message.isSentByUser {
                 Spacer(minLength: 60)
             }
+        }
+    }
+
+    private func usernameView(_ author: String) -> some View {
+        HStack(spacing: 4) {
+            if message.authorRole == .chatOwner {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 8))
+                    .foregroundColor(.yellow)
+            }
+
+            Text("@\(author.lowercased().replacingOccurrences(of: " ", with: ""))")
+                .font(.poppins(.semiBold, size: 11))
+                .foregroundColor(Color.branding)
+                .lineLimit(1)
         }
     }
 }

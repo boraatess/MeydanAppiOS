@@ -7,6 +7,15 @@ struct AuthTextField: View {
     var errorMessage: String?
     @State private var isPasswordVisible: Bool = false
     
+    private var displayedError: String? {
+        if let errorMessage { return errorMessage }
+        if isSecure { return CredentialValidation.passwordError(text) }
+        if placeholder.localizedCaseInsensitiveContains("posta"), CredentialValidation.containsEmoji(text) {
+            return "E-posta adresi emoji içeremez."
+        }
+        return nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
@@ -24,7 +33,7 @@ struct AuthTextField: View {
                 .disableAutocorrection(true)
                 .keyboardType(placeholder.contains("E-Posta") ? .emailAddress : .default)
                 
-                if errorMessage != nil {
+                if displayedError != nil {
                     Image(systemName: "exclamationmark.circle.fill")
                         .foregroundColor(.red)
                 }
@@ -47,11 +56,11 @@ struct AuthTextField: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
-                    .stroke(errorMessage != nil ? Color.red : Color.white.opacity(0.2), lineWidth: 1)
+                    .stroke(displayedError != nil ? Color.red : Color.white.opacity(0.2), lineWidth: 1)
             )
             .preferredColorScheme(.dark)
             
-            if let errorMessage = errorMessage, !errorMessage.isEmpty {
+            if let errorMessage = displayedError, !errorMessage.isEmpty {
                 Text(errorMessage)
                     .font(.manrope(.light, size: 12))
                     .foregroundColor(.redLightError)

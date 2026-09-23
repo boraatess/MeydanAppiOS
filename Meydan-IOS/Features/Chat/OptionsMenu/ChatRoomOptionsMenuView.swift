@@ -2,13 +2,17 @@ import SwiftUI
 
 struct ChatRoomOptionsMenuView: View {
     @ObservedObject var viewModel: ChatViewModel
+
+    private var isModeratorView: Bool {
+        viewModel.isCurrentUserRoomOwner
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // MARK: - Başlık + Kapat Butonu
             HStack {
                 Text("Daha fazla bilgi")
-                    .font(.manrope(.bold, size: 20))
+                    .font(.manrope(.bold, size: 22))
                     .foregroundColor(.white)
                 
                 Spacer()
@@ -19,63 +23,95 @@ struct ChatRoomOptionsMenuView: View {
                     }
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 22, weight: .medium))
                         .foregroundColor(.white)
-                        .frame(width: 30, height: 30)
-                        .background(Color.white.opacity(0.14))
-                        .clipShape(Circle())
-                }
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            .padding(.bottom, 10)
-            
-            // MARK: - Bilgi Metni
-            Text("21.09.25 - 19.30 tarihinde @halimselim tarafından planlandı.\nSohbet spor alanı hakkında.")
-                .font(.manrope(.regular, size: 16))
-                .foregroundColor(.white.opacity(0.55))
-                .lineSpacing(4)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 18)
-            
-            // MARK: - Eylem Butonları
-            VStack(spacing: 8) {
-                OptionsRow(iconName: "Add User", text: "Davet Et") {
-                    viewModel.showMoreOptionsMenu = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        viewModel.showInviteSheet = true
-                    }
-                }
-                OptionsRow(iconName: "2 User", text: "Katılımcıları Gör") {
-                    viewModel.showMoreOptionsMenu = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        viewModel.showParticipantsSheet = true
-                    }
-                }
-                OptionsRow(iconName: "Chart", text: "Anket") {
-                    viewModel.showMoreOptionsMenu = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        viewModel.showCreatePollSheet = true
-                    }
-                }
-                OptionsRow(iconName: "error", text: "Yayını Şikayet Et") {
-                    viewModel.reportCurrentStream()
+                        .frame(width: 32, height: 32)
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 24)
+            .padding(.top, 18)
+            .padding(.bottom, 12)
+            
+            // MARK: - Bilgi Metni
+            Text(infoText)
+                .font(.manrope(.regular, size: 16))
+                .foregroundColor(.white.opacity(0.92))
+                .lineSpacing(4)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 18)
+            
+            // MARK: - Eylem Butonları
+            VStack(spacing: 14) {
+                if isModeratorView {
+                    OptionsRow(iconName: "group_add", text: "Davet Et") {
+                        closeMenuThen {
+                            viewModel.showInviteSheet = true
+                        }
+                    }
+                    OptionsRow(iconName: "group", text: "Katılımcıları Gör") {
+                        closeMenuThen {
+                            viewModel.showParticipantsSheet = true
+                        }
+                    }
+                    if viewModel.pollState == .active {
+                        OptionsRow(iconName: "stop.circle.fill", text: "Anketi Sonlandır", tint: Color(hex: "#FF5C5C")) {
+                            closeMenuThen {
+                                viewModel.endPoll()
+                            }
+                        }
+                    } else {
+                        OptionsRow(iconName: "checklist_rtl", text: "Anket Oluştur") {
+                            closeMenuThen {
+                                viewModel.showCreatePollSheet = true
+                            }
+                        }
+                    }
+                    OptionsRow(iconName: "ci_chat-circle-close", text: "Odayı Sonlandır") {
+                        closeMenuThen {
+                            viewModel.showExitConfirmation = true
+                        }
+                    }
+                } else {
+                    OptionsRow(iconName: "group_add", text: "Davet Et") {
+                        closeMenuThen {
+                            viewModel.showInviteSheet = true
+                        }
+                    }
+                    OptionsRow(iconName: "group", text: "Katılımcıları Gör") {
+                        closeMenuThen {
+                            viewModel.showParticipantsSheet = true
+                        }
+                    }
+                    OptionsRow(iconName: "errorWhite", text: "Yayını Şikayet Et") {
+                        viewModel.reportCurrentStream()
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
         }
-        .background(Color(hex: "#2C2D2F"))
-        // Sadece alt köşeleri yuvarlak göstererek header'a yapışık görünüm
-        .clipShape(
-            UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: 20,
-                bottomTrailingRadius: 20,
-                topTrailingRadius: 0
-            )
-        )
-        .shadow(color: Color(hex: "2C2D2F"), radius: 20, x: 0, y: 8)
+        .background(Color(hex: "#1B1B1B"))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: Color.black.opacity(0.35), radius: 18, x: 0, y: 10)
+    }
+
+    private var infoText: String {
+        let owner = viewModel.roomOwnerUsername.hasPrefix("@")
+            ? viewModel.roomOwnerUsername
+            : "@\(viewModel.roomOwnerUsername)"
+
+        if isModeratorView {
+            return "21.09.25 - 19.30 tarihinde \(owner)\ntarafından planlandı.\nSohbet spor alanı hakkında."
+        }
+
+        return "21.09.25 - 19.30 tarihinde \(owner)\ntarafından planlandı.\nSohbet spor alanı hakkında."
+    }
+
+    private func closeMenuThen(_ action: @escaping () -> Void) {
+        viewModel.showMoreOptionsMenu = false
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            action()
+        }
     }
 }
 
@@ -83,13 +119,14 @@ struct ChatRoomOptionsMenuView: View {
 private struct OptionsRow: View {
     let iconName: String
     let text: String
+    var tint: Color = .white.opacity(0.8)
     let action: () -> Void
     
     var body: some View {
         Button(action: action) {
             HStack(spacing: 14) {
                 Text(text)
-                    .font(.manrope(.medium, size: 15))
+                    .font(.manrope(.regular, size: 17))
                     .foregroundColor(.white)
                 
                 Spacer()
@@ -97,25 +134,26 @@ private struct OptionsRow: View {
                 // Hem SF Symbol hem de asset desteği
                 if UIImage(systemName: iconName) != nil {
                     Image(systemName: iconName)
-                        .font(.system(size: 18))
-                        .foregroundColor(.white.opacity(0.8))
+                        .font(.system(size: 21, weight: .medium))
+                        .foregroundColor(tint)
                         .frame(width: 26, height: 26)
                 } else {
                     Image(iconName)
                         .renderingMode(.template)
                         .resizable()
                         .scaledToFit()
-                        .foregroundColor(.white.opacity(0.8))
+                        .foregroundColor(tint)
                         .frame(width: 22, height: 22)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 13)
+            .padding(.horizontal, 22)
+            .frame(height: 58)
             .background(
-                RoundedRectangle(cornerRadius: 14)
-                    .fill(Color.white.opacity(0.07))
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color(hex: "#363636"))
             )
         }
+        .buttonStyle(.plain)
     }
 }
 

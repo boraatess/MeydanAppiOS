@@ -11,8 +11,14 @@ import Alamofire
 @MainActor
 protocol RoomServiceProtocol: Sendable {
     func createRoom(request: CreateRoomRequest) async throws -> CreateRoomResponse
+    func updateRoom(id: String, request: UpdateRoomRequest) async throws -> UpdateRoomResponse
+    func deleteRoom(id: String) async throws -> RoomActionResponse
     func startRoom(id: String) async throws -> RoomStatusResponse
+    func checkRoomAccess(id: String) async throws -> RoomAccessResponse
     func endRoom(id: String) async throws -> EndRoomResponse
+    func scheduleRoomClosure(id: String) async throws -> RoomActionResponse
+    func joinRoomViewers(id: String) async throws -> RoomActionResponse
+    func leaveRoomViewers(id: String) async throws -> RoomActionResponse
     func fetchRooms() async throws -> RoomsResponse
     func fetchHomeRooms() async throws -> [Room]
     func fetchRooms(forUserId userId: String) async throws -> UserRoomsResponse
@@ -50,14 +56,47 @@ final class RoomService: RoomServiceProtocol {
         return try await performRequest(url: url, method: .post, parameters: request)
     }
 
+    func updateRoom(id: String, request: UpdateRoomRequest) async throws -> UpdateRoomResponse {
+        let url = "\(baseURL)/rooms/\(id)"
+        return try await performRequest(url: url, method: .put, parameters: request)
+    }
+
+    func deleteRoom(id: String) async throws -> RoomActionResponse {
+        let url = "\(baseURL)/room/\(id)"
+        return try await performRequest(url: url, method: .delete, parameters: Optional<EmptyParameters>.none)
+    }
+
     func startRoom(id: String) async throws -> RoomStatusResponse {
         let url = "\(baseURL)/rooms/start/\(id)"
         return try await performRequest(url: url, method: .patch, parameters: Optional<EmptyParameters>.none)
     }
 
+    func checkRoomAccess(id: String) async throws -> RoomAccessResponse {
+        let url = "\(baseURL)/rooms/\(id)/check-access"
+        return try await performRequest(url: url, method: .get, parameters: Optional<EmptyParameters>.none)
+    }
+
     func endRoom(id: String) async throws -> EndRoomResponse {
         let url = "\(baseURL)/rooms/end/\(id)"
         return try await performRequest(url: url, method: .patch, parameters: Optional<EmptyParameters>.none)
+    }
+
+    func scheduleRoomClosure(id: String) async throws -> RoomActionResponse {
+        let url = "\(baseURL)/room/endRoom"
+        let request = EndRoomRequest(roomId: id, immediate: false)
+        return try await performRequest(url: url, method: .post, parameters: request)
+    }
+
+    func joinRoomViewers(id: String) async throws -> RoomActionResponse {
+        let url = "\(baseURL)/rooms/join-room-viewers"
+        let request = RoomViewersMutationRequest(roomId: id)
+        return try await performRequest(url: url, method: .post, parameters: request)
+    }
+
+    func leaveRoomViewers(id: String) async throws -> RoomActionResponse {
+        let url = "\(baseURL)/rooms/leave-room-viewers"
+        let request = RoomViewersMutationRequest(roomId: id)
+        return try await performRequest(url: url, method: .post, parameters: request)
     }
 
     func fetchRooms() async throws -> RoomsResponse {
@@ -177,10 +216,13 @@ final class RoomService: RoomServiceProtocol {
             imageUrl: imageUrl,
             viewersCount: viewersCount,
             creatorName: creatorName,
+            creatorUsername: apiRoom.host.username,
+            creatorFullName: apiRoom.host.fullName,
             creatorImageName: creatorImageName,
             isLive: isLive,
             scheduledDate: scheduledDate,
             scheduledText: scheduledText,
+            categoryId: apiRoom.category?._id,
             categoryName: apiRoom.category?.name
         )
     }
@@ -215,6 +257,11 @@ final class RoomService: RoomServiceProtocol {
             print("request url : \(url)")
             
             print("DEBUG: [\(method.rawValue)] \(url)")
+            if let parameters,
+               let bodyData = try? JSONEncoder().encode(parameters),
+               let bodyString = String(data: bodyData, encoding: .utf8) {
+                print("DEBUG: Request Body: \(bodyString)")
+            }
 
             request
                 .validate()

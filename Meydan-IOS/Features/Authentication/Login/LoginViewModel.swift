@@ -48,6 +48,14 @@ class LoginViewModel: ObservableObject {
             hasClientError = true
         }
         
+        if CredentialValidation.containsEmoji(credential) {
+            credentialError = "Kullanıcı adı, e-posta veya telefon emoji içeremez."
+            hasClientError = true
+        }
+        if let error = CredentialValidation.passwordError(password) {
+            passwordError = error
+            hasClientError = true
+        }
         if hasClientError { return }
         
         isLoading = true
@@ -63,7 +71,7 @@ class LoginViewModel: ObservableObject {
                 return
             }
             
-            handleSuccess(response: response)
+            try await handleSuccess(response: response)
             
         } catch let error as NetworkError {
             if case .serverError(let message) = error {
@@ -183,7 +191,7 @@ class LoginViewModel: ObservableObject {
                 return
             }
             
-            handleSuccess(response: response)
+            try await handleSuccess(response: response)
         } catch let error as NetworkError {
             let lower = error.localizedDescription.lowercased()
             if lower.contains("verify") || lower.contains("aktivasyon") || lower.contains("doğrula") {
@@ -201,13 +209,14 @@ class LoginViewModel: ObservableObject {
         isLoading = false
     }
     
-    private func handleSuccess(response: LoginResponse) {
+    private func handleSuccess(response: LoginResponse) async throws {
         guard let token = response.token, !token.isEmpty else {
             generalErrorMessage = response.message ?? "Giriş yanıtında oturum bilgisi bulunamadı."
             isLoggedIn = false
             return
         }
 
+        try await FirebaseAuthSessionManager.signInIfNeeded(withCustomToken: response.firebaseToken)
         authManager.login(token: token)
         print("Giriş başarılı: \(response.message ?? "")")
         isLoggedIn = true

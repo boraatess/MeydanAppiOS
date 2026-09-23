@@ -74,7 +74,12 @@ class CreateRoomViewModel: ObservableObject {
             return false
         }
 
-        guard let categoryId = hobbies.first(where: { $0.name == categoryName })?._id else {
+        if let warning = ContentFilter.warning(for: trimmedTitle) {
+            errorMessage = warning
+            return false
+        }
+
+        guard let categoryId = resolvedCategoryId(from: categoryName) else {
             errorMessage = "Lütfen bir kategori seçin."
             return false
         }
@@ -95,6 +100,61 @@ class CreateRoomViewModel: ObservableObject {
             let response = try await roomService.createRoom(request: request)
             createdRoomId = response.roomId
             imageURL = uploadedImageURL ?? ""
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func updateRoom(
+        id: String,
+        title: String,
+        date: Date,
+        categoryName: String,
+        selectedImage: UIImage?,
+        existingImageURL: String?
+    ) async -> Bool {
+        let roomId = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !roomId.isEmpty else {
+            errorMessage = "Oda ID bulunamadı."
+            return false
+        }
+
+        guard !trimmedTitle.isEmpty else {
+            errorMessage = "Yayın başlığı boş olamaz."
+            return false
+        }
+
+        if let warning = ContentFilter.warning(for: trimmedTitle) {
+            errorMessage = warning
+            return false
+        }
+
+        guard let categoryId = resolvedCategoryId(from: categoryName) else {
+            errorMessage = "Lütfen bir kategori seçin."
+            return false
+        }
+
+        isLoading = true
+        errorMessage = nil
+        defer { isLoading = false }
+
+        do {
+            let uploadedImageURL = try await uploadImageIfNeeded(selectedImage)
+            let finalImageURL = uploadedImageURL ?? existingImageURL ?? ""
+            let request = UpdateRoomRequest(
+                title: trimmedTitle,
+                category: categoryId,
+                date: Self.iso8601Formatter.string(from: date),
+                image: finalImageURL
+            )
+
+            let response = try await roomService.updateRoom(id: roomId, request: request)
+            createdRoomId = response.roomId ?? response.room?._id ?? roomId
+            imageURL = finalImageURL
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -158,6 +218,17 @@ class CreateRoomViewModel: ObservableObject {
             fieldName: "image",
             endpointPath: "/brand/upload"
         )
+    }
+
+    private func resolvedCategoryId(from value: String) -> String? {
+        let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedValue.isEmpty else { return nil }
+
+        if let hobby = hobbies.first(where: { $0._id == trimmedValue || $0.name == trimmedValue }) {
+            return hobby._id
+        }
+
+        return nil
     }
 
     private static let iso8601Formatter: ISO8601DateFormatter = {

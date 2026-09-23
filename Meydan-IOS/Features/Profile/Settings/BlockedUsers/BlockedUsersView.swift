@@ -76,7 +76,14 @@ struct BlockedUsersView: View {
                     }
                 
                 UnblockMenuPopUp(
-                    onDismiss: { withAnimation { selectedUserForOptions = nil } }
+                    onDismiss: { withAnimation { selectedUserForOptions = nil } },
+                    onUnblock: {
+                        guard let user = selectedUserForOptions else { return }
+                        withAnimation { selectedUserForOptions = nil }
+                        Task {
+                            await viewModel.unblockUser(userId: user.id)
+                        }
+                    }
                 )
                 .transition(.scale(scale: 0.9).combined(with: .opacity))
                 .zIndex(100)
@@ -154,10 +161,11 @@ private struct BlockedUserRow: View {
 
 private struct UnblockMenuPopUp: View {
     let onDismiss: () -> Void
+    let onUnblock: () -> Void
     
     var body: some View {
         VStack(spacing: 0) {
-            Button(action: onDismiss) {
+            Button(action: onUnblock) {
                 HStack(spacing: 8) {
                     Image(systemName: "slash.circle")
                         .font(.system(size: 16, weight: .bold))

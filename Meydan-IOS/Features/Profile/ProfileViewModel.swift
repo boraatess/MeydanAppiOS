@@ -2,6 +2,12 @@ import Foundation
 
 @MainActor
 class ProfileViewModel: ObservableObject {
+    struct CachedData {
+        let userProfile: UserProfile?
+        let pastBroadcasts: [PastBroadcast]
+        let scheduledBroadcasts: [ScheduledBroadcast]
+        let userID: String
+    }
     
     // Hangi sekmenin seçili olduğunu tutan durum.
     enum ProfileTab {
@@ -15,6 +21,12 @@ class ProfileViewModel: ObservableObject {
     @Published var userID = ""
     @Published var shareURL: URL? = nil
     @Published var showShareSheet = false
+    @Published var isStartingRoom = false
+    @Published var startRoomErrorMessage: String? = nil
+    @Published var isDeletingRoom = false
+    @Published var deleteRoomErrorMessage: String? = nil
+    private let cacheKey = "profile.currentUser"
+    private let cacheTTL: TimeInterval = 120
 
     func fetchShareURL(username: String) {
         Task {
@@ -39,12 +51,79 @@ class ProfileViewModel: ObservableObject {
         }
     }
 
+    func fetchRoomShareURL(roomId: String) {
+        Task {
+            do {
+                let response = try await RoomService.shared.fetchRoomShareURL(id: roomId)
+                if let urlString = response.resolvedURL, let url = URL(string: urlString) {
+                    self.shareURL = url
+                    self.showShareSheet = true
+                }
+            } catch {
+                print("DEBUG: Room share URL alınamadı: \(error.localizedDescription)")
+            }
+        }
+    }
+
     func onAppear() async {
         await fetchData()
     }
 
+    func startRoom(id: String) async -> Bool {
+        guard !isStartingRoom, !isDeletingRoom else { return false }
+        let roomId = id.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !roomId.isEmpty else {
+            startRoomErrorMessage = "Oda ID bulunamadı."
+            return false
+        }
+
+        isStartingRoom = true
+        startRoomErrorMessage = nil
+        defer { isStartingRoom = false }
+
+        do {
+            let room = try await RoomService.shared.fetchRoom(id: roomId)
+            // Live rooms can be reopened without sending another start request.
+            if room.status == 1 { return true }
+            guard room.status == 0 else {
+                startRoomErrorMessage = "Bu yayın artık başlatılamıyor. Lütfen yayın listesini yenileyin."
+                return false
+            }
+            _ = try await RoomService.shared.startRoom(id: roomId)
+            return true
+        } catch {
+            startRoomErrorMessage = error.localizedDescription
+            print("DEBUG: Yayın başlatılırken hata oluştu: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    func deleteRoom(id: String) async -> Bool {
+        let roomId = id.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard !roomId.isEmpty else {
+            deleteRoomErrorMessage = "Oda ID bulunamadı."
+            return false
+        }
+
+        isDeletingRoom = true
+        deleteRoomErrorMessage = nil
+        defer { isDeletingRoom = false }
+
+        do {
+            _ = try await RoomService.shared.deleteRoom(id: roomId)
+            AppMemoryCache.shared.removeValue(forKey: cacheKey)
+            await fetchData(force: true)
+            return true
+        } catch {
+            deleteRoomErrorMessage = error.localizedDescription
+            print("DEBUG: Yayın silinirken hata oluştu: \(error.localizedDescription)")
+            return false
+        }
+    }
+
     // /api/user/share/u/{username}
-    
 
     func fetchBroadcasts() {
         // Broadcasts verileri şimdilik mock kalabilir veya başka endpointten çekilebilir
@@ -62,7 +141,13 @@ class ProfileViewModel: ObservableObject {
         
     }
     
-    func fetchData() async {
+    func fetchData(force: Bool = false) async {
+        if !force,
+           let cached: CachedData = AppMemoryCache.shared.value(forKey: cacheKey, maxAge: cacheTTL) {
+            apply(cached)
+            return
+        }
+
         do {
             let response = try await AuthService.shared.getMe()
             let user = response.user
@@ -87,6 +172,7 @@ class ProfileViewModel: ObservableObject {
             )
 
             await fetchUserRooms(with: resolvedUserId)
+            cacheCurrentData()
             
         } catch {
             print("Profil verileri alınırken hata: \(error.localizedDescription)")
@@ -105,32 +191,43 @@ class ProfileViewModel: ObservableObject {
         catch {
             print(error.localizedDescription)
             
-            
         }
     }
 
     private func applyUserRooms(_ rooms: [RoomResponse]) {
         scheduledBroadcasts = rooms
             .filter { $0.status == 0 || $0.status == 1 }
-            .map { room in
-                ScheduledBroadcast(
-                    title: room.title,
-                    date: formattedDate(from: room.date),
-                    time: formattedTime(from: room.date),
-                    imageURL: room.image?.isEmpty == false ? room.image! : "onboarding1"
-                )
-            }
+	            .map { room in
+	                let scheduledDate = parsedDate(from: room.date) ?? Date()
+	                let username = room.host.username.isEmpty ? userProfile?.username ?? "" : room.host.username
+	                let avatar = room.host.profile?.avatar ?? userProfile?.profileImageURL ?? ""
+	                return ScheduledBroadcast(
+	                    id: room._id,
+	                    title: room.title,
+	                    date: formattedDate(from: room.date),
+	                    time: formattedTime(from: room.date),
+	                    imageURL: room.image?.isEmpty == false ? room.image! : "onboarding1",
+	                    scheduledDate: scheduledDate,
+	                    categoryId: room.category?._id,
+	                    categoryName: room.category?.name,
+	                    username: username,
+	                    profileImageURL: avatar
+	                )
+	            }
 
         pastBroadcasts = rooms
             .filter { $0.status != 0 && $0.status != 1 }
             .map { room in
-                PastBroadcast(
-                    title: room.title,
-                    date: formattedDate(from: room.date),
-                    duration: formattedDuration(from: room.details),
-                    imageURL: room.image?.isEmpty == false ? room.image! : "onboarding1"
-                )
-            }
+	                PastBroadcast(
+	                    id: room._id,
+	                    title: room.title,
+	                    date: formattedDate(from: room.date),
+	                    duration: formattedDuration(from: room.details),
+	                    imageURL: room.image?.isEmpty == false ? room.image! : "onboarding1",
+	                    username: room.host.username.isEmpty ? userProfile?.username ?? "" : room.host.username,
+	                    profileImageURL: room.host.profile?.avatar ?? userProfile?.profileImageURL ?? ""
+	                )
+	            }
         
         print("scheduled Broadcasts: \(scheduledBroadcasts)")
         print("past Broadcasts : \(pastBroadcasts)")
@@ -140,7 +237,7 @@ class ProfileViewModel: ObservableObject {
             userProfile = UserProfile(
                 id: profile.id,
                 name: profile.name,
-                username: profile.username,
+                username: Self.formattedUsername(profile.username),
                 bio: profile.bio,
                 streamCount: rooms.count,
                 followersCount: profile.followersCount,
@@ -149,6 +246,25 @@ class ProfileViewModel: ObservableObject {
                 email: profile.email
             )
         }
+    }
+
+    private func cacheCurrentData() {
+        AppMemoryCache.shared.set(
+            CachedData(
+                userProfile: userProfile,
+                pastBroadcasts: pastBroadcasts,
+                scheduledBroadcasts: scheduledBroadcasts,
+                userID: userID
+            ),
+            forKey: cacheKey
+        )
+    }
+
+    private func apply(_ cached: CachedData) {
+        userProfile = cached.userProfile
+        pastBroadcasts = cached.pastBroadcasts
+        scheduledBroadcasts = cached.scheduledBroadcasts
+        userID = cached.userID
     }
 
     private func formattedDate(from dateString: String?) -> String {
@@ -178,6 +294,11 @@ class ProfileViewModel: ObservableObject {
         let remainingSeconds = seconds % 60
         return String(format: "%02d:%02d", minutes, remainingSeconds)
     }
+    
+    private static func formattedUsername(_ value: String) -> String {
+        value.hasPrefix("@") ? value : "@\(value)"
+    }
+
 
     private func parsedDate(from dateString: String?) -> Date? {
         guard let dateString else { return nil }

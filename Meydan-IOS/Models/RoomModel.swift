@@ -73,8 +73,13 @@ struct HostResponse: Decodable, Sendable {
     let fullName: String
     let username: String
     let profile: ProfileResponse?
+    let avatar: String?
 
-    static let placeholder = HostResponse(_id: "", fullName: "", username: "", profile: nil)
+    var profileAvatar: String? {
+        profile?.avatar ?? avatar
+    }
+
+    static let placeholder = HostResponse(_id: "", fullName: "", username: "", profile: nil, avatar: nil)
 
     private enum CodingKeys: String, CodingKey {
         case _id
@@ -82,13 +87,22 @@ struct HostResponse: Decodable, Sendable {
         case fullName
         case username
         case profile
+        case avatar
+        case image
+        case imageUrl
+        case profileImage
+        case profileImageURL
+        case user
+        case viewer
+        case participant
     }
 
-    init(_id: String, fullName: String, username: String, profile: ProfileResponse?) {
+    init(_id: String, fullName: String, username: String, profile: ProfileResponse?, avatar: String? = nil) {
         self._id = _id
         self.fullName = fullName
         self.username = username
         self.profile = profile
+        self.avatar = avatar
     }
 
     init(from decoder: Decoder) throws {
@@ -97,16 +111,33 @@ struct HostResponse: Decodable, Sendable {
             self.fullName = ""
             self.username = username
             self.profile = nil
+            self.avatar = nil
             return
         }
 
         let container = try decoder.container(keyedBy: CodingKeys.self)
+        let nestedUser = (try? container.decode(HostResponse.self, forKey: .user))
+            ?? (try? container.decode(HostResponse.self, forKey: .viewer))
+            ?? (try? container.decode(HostResponse.self, forKey: .participant))
+
         _id = (try? container.decode(String.self, forKey: ._id))
             ?? (try? container.decode(String.self, forKey: .id))
+            ?? nestedUser?._id
             ?? ""
-        fullName = (try? container.decode(String.self, forKey: .fullName)) ?? ""
-        username = (try? container.decode(String.self, forKey: .username)) ?? ""
-        profile = try? container.decode(ProfileResponse.self, forKey: .profile)
+        fullName = (try? container.decode(String.self, forKey: .fullName))
+            ?? nestedUser?.fullName
+            ?? ""
+        username = (try? container.decode(String.self, forKey: .username))
+            ?? nestedUser?.username
+            ?? ""
+        profile = (try? container.decode(ProfileResponse.self, forKey: .profile))
+            ?? nestedUser?.profile
+        avatar = (try? container.decode(String.self, forKey: .avatar))
+            ?? (try? container.decode(String.self, forKey: .image))
+            ?? (try? container.decode(String.self, forKey: .imageUrl))
+            ?? (try? container.decode(String.self, forKey: .profileImage))
+            ?? (try? container.decode(String.self, forKey: .profileImageURL))
+            ?? nestedUser?.avatar
     }
 }
 
@@ -125,9 +156,9 @@ struct CategoryResponse: Decodable, Sendable {
     }
 
     init(from decoder: Decoder) throws {
-        if let name = try? decoder.singleValueContainer().decode(String.self) {
-            self._id = ""
-            self.name = name
+        if let id = try? decoder.singleValueContainer().decode(String.self) {
+            self._id = id
+            self.name = ""
             return
         }
 

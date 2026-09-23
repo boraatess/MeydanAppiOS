@@ -12,6 +12,8 @@ struct DiscoverPost: Identifiable, Equatable {
     let creatorImageName: String
     let viewersCount: Int
     let isVerified: Bool
+    let categoryId: String?
+    let categoryName: String?
 
     init(
         roomId: String,
@@ -23,7 +25,9 @@ struct DiscoverPost: Identifiable, Equatable {
         creatorUsername: String,
         creatorImageName: String,
         viewersCount: Int,
-        isVerified: Bool
+        isVerified: Bool,
+        categoryId: String? = nil,
+        categoryName: String? = nil
     ) {
         self.roomId = roomId
         self.creatorUserId = creatorUserId
@@ -35,11 +39,18 @@ struct DiscoverPost: Identifiable, Equatable {
         self.creatorImageName = creatorImageName
         self.viewersCount = viewersCount
         self.isVerified = isVerified
+        self.categoryId = categoryId
+        self.categoryName = categoryName
     }
 }
 
 @MainActor
 class DiscoverViewModel: ObservableObject {
+    private struct CachedData {
+        let posts: [DiscoverPost]
+        let categories: [Category]
+    }
+
     
     @Published var posts: [DiscoverPost] = []
     @Published var categories: [Category] = []
@@ -48,6 +59,16 @@ class DiscoverViewModel: ObservableObject {
     @Published var errorMessage: String?
     @Published var shareURL: URL? = nil
     @Published var showShareSheet = false
+
+    var filteredPosts: [DiscoverPost] {
+        guard let selectedCategory else {
+            return posts
+        }
+
+        return posts.filter { post in
+            postMatchesCategory(post, category: selectedCategory)
+        }
+    }
     
     func fetchShareURL(roomId: String) {
         Task {
@@ -74,6 +95,8 @@ class DiscoverViewModel: ObservableObject {
     private let hobbiesService: HobbiesServiceProtocol
     private var currentPage = 1
     private let limit = 20
+    private let cacheKey = "discover.data"
+    private let cacheTTL: TimeInterval = 120
     
     init(roomService: RoomServiceProtocol = RoomService.shared,
          hobbiesService: HobbiesServiceProtocol = HobbiesService(baseURL: AppConfig.apiBaseURL)) {
@@ -85,21 +108,31 @@ class DiscoverViewModel: ObservableObject {
     
     func fetchCategories() {
         Task {
+            if let cached: CachedData = AppMemoryCache.shared.value(forKey: cacheKey, maxAge: cacheTTL),
+               !cached.categories.isEmpty {
+                self.categories = cached.categories
+                return
+            }
+
             do {
                 let response = try await hobbiesService.fetchAllHobbies()
-                self.categories = response.hobbies.map { Category(name: $0.name) }
+                self.categories = response.hobbies.map { Category(id: $0._id, name: $0.name) }
+                cacheCurrentData()
             } catch {
                 print("DEBUG: Categories fetch failed: \(error.localizedDescription)")
-                // Fallback mock categories
-                self.categories = [
-                    .init(name: "diziler"), .init(name: "maç"), 
-                    .init(name: "haberler"), .init(name: "magazin")
-                ]
             }
         }
     }
     
     func fetchExploreData() {
+        if let cached: CachedData = AppMemoryCache.shared.value(forKey: cacheKey, maxAge: cacheTTL),
+           !cached.posts.isEmpty {
+            posts = cached.posts
+            categories = cached.categories
+            errorMessage = nil
+            return
+        }
+
         isLoading = true
         errorMessage = nil
         
@@ -130,26 +163,40 @@ class DiscoverViewModel: ObservableObject {
                             creatorUsername: creatorUsername,
                             creatorImageName: creatorAvatar,
                             viewersCount: viewers,
-                            isVerified: true
+                            isVerified: true,
+                            categoryId: apiRoom.category?._id,
+                            categoryName: apiRoom.category?.name
                         )
                     }
+                    cacheCurrentData()
                 }
                 isLoading = false
             } catch {
                 print("DEBUG: Explore fetch failed: \(error.localizedDescription)")
+                self.posts = []
                 self.errorMessage = error.localizedDescription
                 isLoading = false
-                fetchMockPosts()
             }
         }
     }
-    
-    private func fetchMockPosts() {
-        self.posts = [
-            .init(roomId: "mock_1", imageName: "sample_gaddar", roomImage: "sample_survivor", title: "Ezel", creatorName: "Ay Yapım", creatorUsername: "@ayyapim", creatorImageName: "person.crop.circle.fill", viewersCount: 200, isVerified: true),
-            .init(roomId: "mock_2", imageName: "sample_match_1", roomImage: "sample_match_1", title: "Türkiye - İspanya Maçı", creatorName: "Spor Videoları", creatorUsername: "@sporvideolari", creatorImageName: "person.crop.circle.fill", viewersCount: 1271, isVerified: false),
-            .init(roomId: "mock_3", imageName: "sample_masterchef", roomImage: "sample_masterchef", title: "Masterchef All Star", creatorName: "Masterchef Türkiye", creatorUsername: "@masterchefturkiye", creatorImageName: "person.crop.circle.fill", viewersCount: 542, isVerified: true),
-            .init(roomId: "mock_4", imageName: "sample_survivor", roomImage: "sample_survivor", title: "Survivor All Star", creatorName: "Survivor", creatorUsername: "@survivor", creatorImageName: "person.crop.circle.fill", viewersCount: 14530, isVerified: true),
-        ]
+
+    private func cacheCurrentData() {
+        AppMemoryCache.shared.set(
+            CachedData(posts: posts, categories: categories),
+            forKey: cacheKey
+        )
+    }
+
+    private func normalizeCategoryName(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+    }
+
+    private func postMatchesCategory(_ post: DiscoverPost, category: Category) -> Bool {
+        if let categoryId = post.categoryId, !categoryId.isEmpty {
+            return categoryId == category.id
+        }
+
+        return normalizeCategoryName(post.categoryName ?? "") == normalizeCategoryName(category.name)
     }
 }

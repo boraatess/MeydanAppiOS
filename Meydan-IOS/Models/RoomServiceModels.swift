@@ -13,15 +13,74 @@ struct CreateRoomResponse: Decodable, Sendable {
     let message: String?
 }
 
+struct UpdateRoomRequest: Encodable, Sendable {
+    let title: String
+    let category: String
+    let date: String
+    let image: String
+}
+
+struct UpdateRoomResponse: Decodable, Sendable {
+    let status: String?
+    let message: String?
+    let room: RoomResponse?
+    let roomId: String?
+}
+
 struct RoomStatusResponse: Decodable, Sendable {
     let status: String?
     let message: String?
+}
+
+struct RoomAccessResponse: Decodable, Sendable {
+    let status: String?
+    let message: String?
+    let allowed: Bool?
+    let canAccess: Bool?
+    let hasAccess: Bool?
+    let access: Bool?
+    let isAllowed: Bool?
+
+    var isAccessible: Bool {
+        if let allowed { return allowed }
+        if let canAccess { return canAccess }
+        if let hasAccess { return hasAccess }
+        if let access { return access }
+        if let isAllowed { return isAllowed }
+
+        if let status {
+            let normalized = status.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            if normalized == "OK" || normalized == "SUCCESS" || normalized == "ALLOWED" {
+                return true
+            }
+            if normalized == "DENIED" || normalized == "FORBIDDEN" || normalized == "ERROR" {
+                return false
+            }
+        }
+
+        return true
+    }
 }
 
 struct EndRoomResponse: Decodable, Sendable {
     let status: String?
     let finalViewersCount: Int?
     let message: String?
+}
+
+struct EndRoomRequest: Encodable, Sendable {
+    let roomId: String
+    let immediate: Bool
+}
+
+struct RoomViewersMutationRequest: Encodable, Sendable {
+    let roomId: String
+    let id: String
+
+    init(roomId: String) {
+        self.roomId = roomId
+        self.id = roomId
+    }
 }
 
 struct UserRoomsResponse: Decodable, Sendable {
@@ -64,18 +123,25 @@ struct RoomSingleResponse: Decodable, Sendable {
     }
 
     init(from decoder: Decoder) throws {
-        if let room = try? RoomResponse(from: decoder) {
-            self.room = room
-            return
-        }
-
         let container = try decoder.container(keyedBy: CodingKeys.self)
         if let room = try? container.decode(RoomResponse.self, forKey: .room) {
             self.room = room
         } else if let room = try? container.decode(RoomResponse.self, forKey: .data) {
             self.room = room
+        } else if let room = try? container.decode(RoomResponse.self, forKey: .result) {
+            self.room = room
         } else {
-            self.room = try container.decode(RoomResponse.self, forKey: .result)
+            let room = try RoomResponse(from: decoder)
+            guard !room._id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw DecodingError.valueNotFound(
+                    RoomResponse.self,
+                    DecodingError.Context(
+                        codingPath: decoder.codingPath,
+                        debugDescription: "Room response did not contain a valid room id."
+                    )
+                )
+            }
+            self.room = room
         }
     }
 }

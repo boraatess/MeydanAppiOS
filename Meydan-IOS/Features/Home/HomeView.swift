@@ -5,12 +5,14 @@ struct HomeView: View {
     @State private var showOptions = false
     @State private var showReportSheet = false
     @State private var selectedRoom: Room? = nil
-    @State private var showChatView = false
+    @State private var chatDestination: ChatDestination? = nil
     @State private var searchText = ""
     @State private var isSearchActive = false
-    @State private var searchFilter: SearchFilterType = .people
+    @State private var selectedSearchFilter: SearchFilterType = .people
     @StateObject private var searchViewModel = SearchViewModel()
     @ObservedObject private var pushManager = PushNotificationManager.shared
+    @State private var roomAccessError: String?
+    @State private var roomAccessMessage: String?
 
     // Navigation
     @Binding var navigationPath: NavigationPath
@@ -33,9 +35,7 @@ struct HomeView: View {
                         }
                     )
 
-                    if isSearchActive {
-                        SearchFilterChipsView(selectedFilter: $searchFilter)
-                    } else {
+                    if !isSearchActive {
                         CategoryScrollView(
                             categories: viewModel.categories,
                             selectedCategory: $viewModel.selectedCategory,
@@ -47,10 +47,10 @@ struct HomeView: View {
 
                 if isSearchActive {
                     SearchResultsView(
-                        filter: searchFilter,
                         searchText: searchText,
                         people: searchViewModel.people,
                         rooms: searchViewModel.rooms,
+                        selectedFilter: $selectedSearchFilter,
                         isLoading: searchViewModel.isLoading,
                         errorMessage: searchViewModel.errorMessage,
                         onPersonProfileTap: { person in
@@ -62,50 +62,59 @@ struct HomeView: View {
                                 )
                             )
                         },
+                        onRoomJoinTap: { room in
+                            openChatIfPossible(room)
+                        },
                         onRoomProfileTap: { room in
                             navigationPath.append(
                                 ProfileNavigation.otherProfile(
                                     userId: room.creatorUserId,
-                                    name: room.creatorName,
-                                    username: room.creatorName
+                                    name: room.creatorFullName,
+                                    username: room.creatorUsername
                                 )
                             )
-                        },
-                        onRoomOptionsTap: { room in
-                            selectedRoom = room
-                            withAnimation { showOptions = true }
-                        },
-                        onRoomJoinTap: { room in
-                            selectedRoom = room
-                            showChatView = true
                         }
                     )
+                } else if let errorMessage = viewModel.errorMessage, viewModel.filteredRooms.isEmpty {
+                    HomeRoomsErrorView(message: errorMessage) {
+                        Task {
+                            await viewModel.fetchHomePageData(force: true)
+                        }
+                    }
+                    .padding(.horizontal, 16)
                 } else {
                     ScrollView(.vertical, showsIndicators: false) {
                         VStack(alignment: .leading, spacing: 16) {
                             VStack(alignment: .leading, spacing: 16) {
                                 ForEach(Array(viewModel.filteredRooms.enumerated()), id: \.element.id) { index, room in
                                     if index == 0 {
-                                        AdMobBannerAdView(adUnitID: AdMobConfig.homeBannerAdUnitID)
+                                        AdMobNativeAdCardView(adUnitID: AdMobConfig.homeNativeAdUnitID)
                                             .padding(.horizontal, 20)
                                     }
 
                                     RoomCardView(room: room, onProfileTap: {
-                                        navigationPath.append(ProfileNavigation.otherProfile(userId: room.creatorUserId, name: room.creatorName, username: room.creatorName))
+                                        navigationPath.append(
+                                            ProfileNavigation.otherProfile(
+                                                userId: room.creatorUserId,
+                                                name: room.creatorFullName,
+                                                username: room.creatorUsername
+                                            )
+                                        )
                                     }, onOptionsTap: {
+                                        print("DEBUG: Home RoomCard options closure çalıştı. roomId=\(room.roomId), title=\(room.title)")
                                         selectedRoom = room
                                         withAnimation { showOptions = true }
                                     }, onJoinTap: {
-                                        print("🚀 SOHBETE KATIL TAPPED!")
-                                        selectedRoom = room
-                                        showChatView = true
+                                        print("DEBUG: Home RoomCard join closure çalıştı. roomId=\(room.roomId), isLive=\(room.isLive), title=\(room.title)")
+                                        openChatIfPossible(room)
                                     }, isNotificationSubscribed: pushManager.isSubscribedToRoom(room.roomId), onNotificationTap: {
+                                        print("DEBUG: Home RoomCard notification closure çalıştı. roomId=\(room.roomId), title=\(room.title)")
                                         viewModel.toggleRoomNotification(roomId: room.roomId)
                                     })
                                     .padding(.horizontal, 20)
 
                                     if (index + 1).isMultiple(of: 5) {
-                                        AdMobBannerAdView(adUnitID: AdMobConfig.homeBannerAdUnitID)
+                                        AdMobNativeAdCardView(adUnitID: AdMobConfig.homeNativeAdUnitID)
                                             .padding(.horizontal, 20)
                                     }
                                 }
@@ -114,12 +123,12 @@ struct HomeView: View {
                         .padding(.bottom)
                     }
                     .pullToRefresh {
-                        await viewModel.fetchHomePageData()
+                        await viewModel.fetchHomePageData(force: true)
                     }
                 }
             }
-            .padding(.horizontal, 16)
             .padding(.bottom, 8)
+            .padding(.horizontal, 12)
             .background(Color.background.ignoresSafeArea(edges: .bottom))
             .onChange(of: searchText) { newValue in
                 guard isSearchActive else { return }
@@ -133,19 +142,36 @@ struct HomeView: View {
                 }
             }
             .navigationBarHidden(true)
+            .overlay(alignment: .top) {
+                if let roomAccessMessage {
+                    TransientToastView(message: roomAccessMessage)
+                        .padding(.top, 12)
+                }
+            }
+            .alert("Sohbete Katılamıyorsunuz", isPresented: Binding(
+                get: { roomAccessError != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        roomAccessError = nil
+                    }
+                }
+            )) {
+                Button("Tamam", role: .cancel) { roomAccessError = nil }
+            } message: {
+                Text(roomAccessError ?? "")
+            }
             .navigationDestination(for: String.self) { destination in
                 if destination == "Favorites" {
                     FavoriteStreamersView()
                 }
             }
-            .fullScreenCover(isPresented: $showChatView) {
-                if let room = selectedRoom {
-                    ChatView(
-                        roomId: room.roomId,
-                        roomTitle: room.title,
-                        roomOwnerUsername: room.creatorName
-                    )
-                }
+            .fullScreenCover(item: $chatDestination) { destination in
+                ChatView(
+                    roomId: destination.roomId,
+                    roomTitle: destination.roomTitle,
+                    roomOwnerUsername: destination.roomOwnerUsername,
+                    roomOwnerUserId: destination.roomOwnerUserId
+                )
             }
             .navigationDestination(for: ProfileNavigation.self) { destination in
                 switch destination {
@@ -159,6 +185,7 @@ struct HomeView: View {
                     EmptyView()
                 }
             }
+            .padding(.horizontal, 12)
             .overlay {
                 if showOptions {
                     ZStack {
@@ -221,11 +248,82 @@ struct HomeView: View {
         }
     }
 
+    private func openChatIfPossible(_ room: Room) {
+        let roomId = room.roomId.trimmingCharacters(in: .whitespacesAndNewlines)
+        print("DEBUG: Home openChatIfPossible çağrıldı. rawRoomId=\(room.roomId), trimmedRoomId=\(roomId), isLive=\(room.isLive), creatorUserId=\(room.creatorUserId)")
+        guard room.isLive, !roomId.isEmpty else {
+            print("DEBUG: Sohbete katıl engellendi. isLive=\(room.isLive), roomId=\(room.roomId)")
+            return
+        }
+
+        Task {
+            do {
+                let access = try await RoomAccessHelper.validateAccess(
+                    roomId: roomId,
+                    roomOwnerUserId: room.creatorUserId
+                )
+                await showAccessMessageIfNeeded(access?.message)
+                print("DEBUG: Home chatDestination set ediliyor. roomId=\(roomId), title=\(room.title)")
+                chatDestination = ChatDestination(room: room)
+            } catch {
+                print("DEBUG: Home check-access/chat açma hatası: \(error.localizedDescription)")
+                roomAccessError = error.localizedDescription
+            }
+        }
+    }
+
+    private func showAccessMessageIfNeeded(_ message: String?) async {
+        guard let message = message?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !message.isEmpty else { return }
+
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+            roomAccessMessage = message
+        }
+
+        try? await Task.sleep(nanoseconds: 700_000_000)
+
+        withAnimation(.easeOut(duration: 0.2)) {
+            roomAccessMessage = nil
+        }
+    }
+
 }
 
 struct HomeView_Preview: PreviewProvider {
     static var previews: some View {
         HomeView(navigationPath: .constant(NavigationPath()))
             .preferredColorScheme(.dark)
+    }
+}
+
+private struct HomeRoomsErrorView: View {
+    let message: String
+    let onRetry: () -> Void
+
+    var body: some View {
+        Spacer(minLength: 0)
+
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 28))
+                .foregroundColor(.branding)
+
+            Text(message)
+                .font(.manrope(.medium, size: 14))
+                .foregroundColor(.grayLight)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+
+            Button("Tekrar Dene", action: onRetry)
+                .font(.manrope(.bold, size: 14))
+                .foregroundColor(.white)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+                .background(Color.white.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .frame(maxWidth: .infinity)
+
+        Spacer(minLength: 0)
     }
 }

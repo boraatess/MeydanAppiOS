@@ -3,6 +3,12 @@ import Foundation
 // MARK: - ViewModel
 @MainActor
 class HomeViewModel: ObservableObject {
+    private struct CachedData {
+        let categories: [Category]
+        let popularRooms: [Room]
+        let filteredRooms: [Room]
+    }
+
     // Header
     @Published var searchText: String = ""
     
@@ -54,6 +60,8 @@ class HomeViewModel: ObservableObject {
     // Rate limiting
     private var lastFetchAt: Date? = nil
     private let minimumRefreshInterval: TimeInterval = 60 // seconds
+    private let cacheKey = "home.data"
+    private let cacheTTL: TimeInterval = 120
     
     private let roomService: RoomServiceProtocol = RoomService.shared
     private let hobbiesService: HobbiesServiceProtocol = HobbiesService(baseURL: AppConfig.apiBaseURL)
@@ -66,6 +74,15 @@ class HomeViewModel: ObservableObject {
     }
     
     func fetchHomePageData(force: Bool = false) async {
+        if !force,
+           let cached: CachedData = AppMemoryCache.shared.value(forKey: cacheKey, maxAge: cacheTTL) {
+            categories = cached.categories
+            popularRooms = cached.popularRooms
+            filteredRooms = cached.filteredRooms
+            errorMessage = nil
+            return
+        }
+
         // Throttle: avoid frequent refresh within minimumRefreshInterval
         if !force, let last = lastFetchAt, Date().timeIntervalSince(last) < minimumRefreshInterval {
             return
@@ -79,7 +96,7 @@ class HomeViewModel: ObservableObject {
         // Fetch categories from Hobbies API
         do {
             let hobbiesResponse = try await hobbiesService.fetchAllHobbies()
-            self.categories = hobbiesResponse.hobbies.map { Category(name: $0.name) }
+            self.categories = hobbiesResponse.hobbies.map { Category(id: $0._id, name: $0.name) }
             
         } catch {
             print("Kategoriler alınırken hata: \(error.localizedDescription)")
@@ -90,17 +107,17 @@ class HomeViewModel: ObservableObject {
             let apiRooms = try await roomService.fetchHomeRooms()
             self.popularRooms = apiRooms
             self.filteredRooms = apiRooms
+            AppMemoryCache.shared.set(
+                CachedData(categories: categories, popularRooms: popularRooms, filteredRooms: filteredRooms),
+                forKey: cacheKey
+            )
             print("API rooms : \(apiRooms)" )
             
-            if apiRooms.count == 0 {
-                fetchRooms()
-                
-            }
             
         } catch {
-            self.errorMessage = "Veriler yüklenirken bir hata oluştu: \(error.localizedDescription)"
-            fetchRooms()
-            
+            self.popularRooms = []
+            self.filteredRooms = []
+            self.errorMessage = error.localizedDescription
         }
 
         isLoading = false
@@ -115,9 +132,21 @@ class HomeViewModel: ObservableObject {
             filteredRooms = popularRooms
         } else {
             selectedCategory = category
-            let key = category.name.lowercased()
-            filteredRooms = popularRooms.filter { ($0.categoryName ?? "").lowercased() == key }
+            filteredRooms = popularRooms.filter { roomMatchesCategory($0, category: category) }
         }
+    }
+
+    private func roomMatchesCategory(_ room: Room, category: Category) -> Bool {
+        if let categoryId = room.categoryId, !categoryId.isEmpty {
+            return categoryId == category.id
+        }
+
+        return normalizeCategoryName(room.categoryName ?? "") == normalizeCategoryName(category.name)
+    }
+
+    private func normalizeCategoryName(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
     }
     
     // Kullanıcı bir odaya katılmak istediğinde
@@ -134,37 +163,6 @@ class HomeViewModel: ObservableObject {
      .init(imageName: "sample_survivor", title: "Survivor All Star", creatorName: "@survivor", creatorImageName: "person.crop.circle.fill", viewersCount: 14530),
 
      */
-    
-    func fetchCategories() {
-        
-        self.categories = [
-            
-            .init(name: "diziler"),.init(name: "maç"),.init(name: "haberler"), .init(name: "magazin"), .init(name: "aksiyon")
-            
-        ]
-        
-    }
-    
-    func fetchRooms() {
-        // API'den veri çekilecekmiş gibi sahte veriler oluşturuyoruz.
-        self.filteredRooms = [
-            .init(roomId: "mock_1", title: "Gaddar Final Bölümü", imageUrl: "onboarding1", viewersCount: 119, creatorName: "Meydan", creatorImageName: "", isLive: true, scheduledDate: nil, scheduledText: "1 saat sonra", categoryName: "action"),
-            .init(roomId: "mock_2", title: "Türkiye - İspanya Maçı", imageUrl: "onboarding2", viewersCount: 1271, creatorName: "Meydan", creatorImageName: "", isLive: false, scheduledDate: nil, scheduledText: "1 saat sonra", categoryName: "action"),
-            .init(roomId: "mock_3", title: "Masterchef All Star", imageUrl: "onboarding3", viewersCount: 542, creatorName: "dizikolik", creatorImageName: "", isLive: false, scheduledDate: nil, scheduledText: "1 saat sonra", categoryName: "action"),
-            .init(roomId: "mock_4", title: "Survivor All Star", imageUrl: "onboarding1", viewersCount: 2542, creatorName: "Meydan", creatorImageName: "", isLive: true, scheduledDate: nil, scheduledText: "1 saat sonra", categoryName: "action"),
-            .init(roomId: "mock_5", title: "Gaddar Final Bölümü", imageUrl: "onboarding1", viewersCount: 119, creatorName: "dizikolik", creatorImageName: "", isLive: true, scheduledDate: nil, scheduledText: "1 saat sonra", categoryName: "action"),
-            .init(roomId: "mock_6", title: "Türkiye - İspanya Maçı", imageUrl: "onboarding3", viewersCount: 1271, creatorName: "Meydan", creatorImageName: "", isLive: false, scheduledDate: nil, scheduledText: "1 saat sonra", categoryName: "action"),
-            .init(roomId: "mock_7", title: "Masterchef All Star", imageUrl: "onboarding2", viewersCount: 542, creatorName: "AcunMedya", creatorImageName: "", isLive: false, scheduledDate: nil, scheduledText: "1 saat sonra", categoryName: "action"),
-            .init(roomId: "mock_8", title: "Survivor All Star", imageUrl: "onboarding1", viewersCount: 2542, creatorName: "AcunMedya", creatorImageName: "", isLive: true, scheduledDate: nil, scheduledText: "1 saat sonra", categoryName: "action")
-        ]
-        
-        self.popularRooms = [
-            .init(roomId: "mock_1", title: "Gaddar Final Bölümü", imageUrl: "onboarding1", viewersCount: 119, creatorName: "Meydan", creatorImageName: "", isLive: true, scheduledDate: nil, scheduledText: "1 saat sonra", categoryName: "action"),
-            .init(roomId: "mock_2", title: "Türkiye - İspanya Maçı", imageUrl: "onboarding1", viewersCount: 1271, creatorName: "Maçkolik", creatorImageName: "", isLive: false, scheduledDate: nil, scheduledText: "1 saat sonra", categoryName: "action"),
-            .init(roomId: "mock_3", title: "Masterchef All Star", imageUrl: "onboarding3", viewersCount: 542, creatorName: "AcunMedya", creatorImageName: "", isLive: false, scheduledDate: nil, scheduledText: "1 saat sonra", categoryName: "action"),
-            .init(roomId: "mock_4", title: "Survivor All Star", imageUrl: "onboarding2", viewersCount: 2542, creatorName: "Meydan", creatorImageName: "", isLive: true, scheduledDate: nil, scheduledText: "1 saat sonra", categoryName: "action")
-        ]
-    }
     
     private static func makeSkeletonRooms(count: Int) -> [Room] {
         guard count > 0 else { return [] }

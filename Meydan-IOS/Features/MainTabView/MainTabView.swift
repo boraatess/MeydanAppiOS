@@ -7,6 +7,8 @@ struct MainTabView: View {
     @State private var previousTab: Tab = .home
     @State private var profilePath: [ProfileNavigation] = []
     @State private var homePath = NavigationPath()
+    @State private var discoverPath = NavigationPath()
+    @ObservedObject private var notificationBadge = NotificationBadgeManager.shared
     
     init() {
         UITabBar.appearance().isHidden = true
@@ -15,7 +17,7 @@ struct MainTabView: View {
     @EnvironmentObject var appFlowState: AppFlowState
     
     private var showsTabBar: Bool {
-        profilePath.isEmpty && selectedTab != .plus
+        profilePath.isEmpty && homePath.isEmpty && discoverPath.isEmpty && selectedTab != .plus
     }
 
     private let tabBarReservedHeight: CGFloat = 100
@@ -28,7 +30,7 @@ struct MainTabView: View {
                 case .home:
                     HomeView(navigationPath: $homePath)
                 case .discover:
-                    DiscoverView()
+                    DiscoverView(navigationPath: $discoverPath)
                 case .plus:
                     CreateRoomView {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -51,7 +53,12 @@ struct MainTabView: View {
             }
 
             if showsTabBar {
-                CustomTabBar(selectedTab: $selectedTab, previousTab: $previousTab, homePath: $homePath)
+                CustomTabBar(
+                    selectedTab: $selectedTab,
+                    previousTab: $previousTab,
+                    homePath: $homePath,
+                    hasUnreadNotifications: notificationBadge.hasUnreadNotifications
+                )
                     .padding(.horizontal, 20)
                     .padding(.bottom, -4)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -59,6 +66,9 @@ struct MainTabView: View {
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .preferredColorScheme(.dark)
+        .task {
+            await notificationBadge.refresh()
+        }
         .onChange(of: appFlowState.deepLinkTarget) { target in
             if let target = target {
                 switch target {
@@ -83,6 +93,7 @@ private struct CustomTabBar: View {
     @Binding var selectedTab: Tab
     @Binding var previousTab: Tab
     @Binding var homePath: NavigationPath
+    let hasUnreadNotifications: Bool
     @State private var xAxis: CGFloat = 0
     @State private var tabPositions: [Tab: CGFloat] = [:]
 
@@ -117,12 +128,7 @@ private struct CustomTabBar: View {
                             selectedTab = tab
                         }
                     } label: {
-                        Image(tabIconName(tab))
-                            .resizable()
-                            .renderingMode(.template)
-                            .scaledToFit()
-                            .frame(width: 24, height: 24)
-                            .foregroundColor(selectedTab == tab ? .clear : .white.opacity(0.5))
+                        tabIcon(tab, isSelected: selectedTab == tab)
                             .frame(maxWidth: .infinity)
                             .frame(height: 55)
                             .contentShape(Rectangle())
@@ -143,7 +149,6 @@ private struct CustomTabBar: View {
                                                 xAxis = midX
                                             }
                                         }
-                                    
                                 }
                             )
                     }
@@ -158,12 +163,7 @@ private struct CustomTabBar: View {
                 .fill(Color.white)
                 .frame(width: 50, height: 50)
                 .overlay(
-                    Image(tabIconName(selectedTab))
-                        .resizable()
-                        .renderingMode(.template)
-                        .scaledToFit()
-                        .frame(width: 24, height: 24)
-                        .foregroundColor(.black)
+                    tabIcon(selectedTab, isSelected: true, selectedBubble: true)
                 )
                 .position(x: xAxis, y: 35)
                 .offset(y: -35)
@@ -187,6 +187,24 @@ private struct CustomTabBar: View {
         case .profile: return "Profile"
         case .testChatRoom: return "Chat"
         }
+    }
+
+    @ViewBuilder
+    private func tabIcon(_ tab: Tab, isSelected: Bool, selectedBubble: Bool = false) -> some View {
+        Image(tabIconName(tab))
+            .resizable()
+            .renderingMode(.template)
+            .scaledToFit()
+            .frame(width: 24, height: 24)
+            .foregroundColor(selectedBubble ? .black : (isSelected ? .clear : .white.opacity(0.5)))
+            .overlay(alignment: .topTrailing) {
+                if tab == .notification && hasUnreadNotifications {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 8, height: 8)
+                        .offset(x: 4, y: -4)
+                }
+            }
     }
 }
 

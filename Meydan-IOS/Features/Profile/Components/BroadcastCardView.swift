@@ -8,6 +8,10 @@ enum BroadcastCardType {
 struct BroadcastCardView: View {
     let broadcast: BroadcastCardType
     var width: CGFloat? = nil
+    var showsMenuButton: Bool = true
+    var showsNotificationButton: Bool = false
+    var isNotificationSubscribed: Bool = false
+    var onNotificationTap: () -> Void = {}
     let onMenuTap: () -> Void
     
     var body: some View {
@@ -46,12 +50,17 @@ struct BroadcastCardView: View {
                     
                     Spacer()
                     
-                    Button(action: onMenuTap) {
-                        Image(systemName: "ellipsis")
-                            .rotationEffect(.degrees(90))
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(8)
+                    if showsMenuButton {
+                        Button(action: onMenuTap) {
+                            Image(systemName: "ellipsis")
+                                .rotationEffect(.degrees(90))
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(width: 48, height: 48)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .zIndex(3)
                     }
                 }
                 .padding(.horizontal, 10)
@@ -63,37 +72,60 @@ struct BroadcastCardView: View {
                 VStack(spacing: 16) {
                     // Profil ve Başlık Seti
                     HStack(spacing: 12) {
-                        Image(systemName: "person.crop.circle.fill") // Avatar resmi buraya
-                            .resizable()
-                            .scaledToFill()
+                        avatarImageView
                             .frame(width: 44, height: 44)
                             .clipShape(Circle())
                             .overlay(Circle().stroke(Color.white, lineWidth: 1.5))
-                            .foregroundColor(.grayLight)
                         
                         VStack(alignment: .leading, spacing: 2) {
                             Text(title)
                                 .font(.manrope(.bold, size: 20))
                                 .foregroundColor(.white)
                                 .lineLimit(1)
-                            Text("@dizikolik")
+                                .truncationMode(.tail)
+                            Text(displayUsername)
                                 .font(.manrope(.medium, size: 13))
                                 .foregroundColor(.white.opacity(0.8))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .layoutPriority(1)
                         
                         Spacer()
                     }
                     
                     // Koyu Gri Tarih Arka Planı (Pill)
-                    HStack {
-                        Text(bottomText)
-                            .font(.manrope(.bold, size: 16))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
+                    HStack(spacing: 12) {
+                        HStack {
+                            Text(bottomText)
+                                .font(.manrope(.bold, size: 16))
+                                .foregroundColor(.white)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.78)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .frame(height: 56)
+                        .background(Color(red: 0.15, green: 0.15, blue: 0.15))
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+
+                        if showsNotificationButton, case .scheduled = broadcast {
+                            Button(action: onNotificationTap) {
+                                Image(systemName: isNotificationSubscribed ? "bell.fill" : "bell")
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundColor(isNotificationSubscribed ? Color(red: 1, green: 0.45, blue: 0.4) : .white)
+                                    .frame(width: 56, height: 56)
+                                    .background(Color(red: 0.15, green: 0.15, blue: 0.15))
+                                    .clipShape(RoundedRectangle(cornerRadius: 18))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 18)
+                                            .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                            .contentShape(Rectangle())
+                        }
                     }
-                    .padding(.vertical, 16)
-                    .background(Color(red: 0.15, green: 0.15, blue: 0.15)) // Görseldeki spesifik koyu zemin rengi
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
                 }
                 .padding(.horizontal, 10)
                 .padding(.bottom, 10)
@@ -102,8 +134,6 @@ struct BroadcastCardView: View {
         .frame(maxWidth: width == nil ? .infinity : nil)
         .frame(width: width, height: 280) // Yeni dizaynda Date Box olduğu için biraz daha yüksek (280)
         .clipShape(RoundedRectangle(cornerRadius: 24))
-        // Dışarıdan uygulanacak eşit boşluk (Horizontal Padding)
-        .padding(.horizontal, 24)
         .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
     }
     
@@ -126,6 +156,53 @@ struct BroadcastCardView: View {
         case .scheduled(let b): return b.imageURL
         case .past(let p): return p.imageURL
         }
+    }
+
+    private var username: String {
+        switch broadcast {
+        case .scheduled(let b): return b.username
+        case .past(let p): return p.username
+        }
+    }
+
+    private var displayUsername: String {
+        let trimmed = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "@user" }
+        return trimmed.hasPrefix("@") ? trimmed : "@\(trimmed)"
+    }
+
+    private var avatarSource: String {
+        switch broadcast {
+        case .scheduled(let b): return b.profileImageURL
+        case .past(let p): return p.profileImageURL
+        }
+    }
+
+    @ViewBuilder
+    private var avatarImageView: some View {
+        if let url = URL(string: avatarSource), url.scheme != nil {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                case .failure, .empty:
+                    fallbackAvatarImage
+                @unknown default:
+                    fallbackAvatarImage
+                }
+            }
+        } else {
+            fallbackAvatarImage
+        }
+    }
+
+    private var fallbackAvatarImage: some View {
+        Image(systemName: "person.crop.circle.fill")
+            .resizable()
+            .scaledToFill()
+            .foregroundColor(.grayLight)
     }
 
     @ViewBuilder

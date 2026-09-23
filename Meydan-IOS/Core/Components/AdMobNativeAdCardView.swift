@@ -8,11 +8,15 @@ struct AdMobNativeAdCardView: View {
     var body: some View {
         AdMobNativeAdRepresentable(adUnitID: adUnitID)
             .frame(maxWidth: .infinity)
-            .frame(height: 170)
+            .frame(height: 220)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .background(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color(red: 0.08, green: 0.08, blue: 0.08))
+                    .fill(Color(red: 0.10, green: 0.10, blue: 0.10))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(0.05), lineWidth: 1)
             )
     }
 }
@@ -82,7 +86,6 @@ private final class NativeAdContainerView: UIView {
     private let bodyLabel = UILabel()
     private let callToActionButton = UIButton(type: .system)
     private let iconImageView = UIImageView()
-    private let gradientLayer = CAGradientLayer()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -96,13 +99,12 @@ private final class NativeAdContainerView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        gradientLayer.frame = bounds
     }
 
     func show(nativeAd: NativeAd) {
         headlineLabel.text = nativeAd.headline
         bodyLabel.text = nativeAd.body ?? nativeAd.advertiser ?? "Sponsorlu içerik"
-        callToActionButton.setTitle(nativeAd.callToAction ?? "İncele", for: .normal)
+        callToActionButton.setTitle((nativeAd.callToAction ?? "YÜKLE").uppercased(), for: .normal)
 
         if let icon = nativeAd.icon?.image {
             iconImageView.image = icon
@@ -117,15 +119,15 @@ private final class NativeAdContainerView: UIView {
     }
 
     func showPlaceholder() {
-        headlineLabel.text = "Gemini ile geleceği keşfet!"
-        bodyLabel.text = "Yapay Zeka Ortaklığı"
-        callToActionButton.setTitle("İncele", for: .normal)
-        iconImageView.image = UIImage(systemName: "sparkles")
+        headlineLabel.text = "Google Ads"
+        bodyLabel.text = "Sponsorlu içerik"
+        callToActionButton.setTitle("YÜKLE", for: .normal)
+        iconImageView.image = UIImage(systemName: "a.circle.fill")
         iconImageView.isHidden = false
     }
 
     private func setupView() {
-        backgroundColor = UIColor(red: 0.08, green: 0.08, blue: 0.08, alpha: 1)
+        backgroundColor = UIColor(red: 0.10, green: 0.10, blue: 0.10, alpha: 1)
         clipsToBounds = true
         layer.cornerRadius = 16
 
@@ -135,17 +137,10 @@ private final class NativeAdContainerView: UIView {
         mediaView.translatesAutoresizingMaskIntoConstraints = false
         mediaView.contentMode = .scaleAspectFill
         mediaView.clipsToBounds = true
+        mediaView.backgroundColor = .clear
         nativeAdView.addSubview(mediaView)
 
-        gradientLayer.colors = [
-            UIColor.black.withAlphaComponent(0.05).cgColor,
-            UIColor.black.withAlphaComponent(0.45).cgColor
-        ]
-        gradientLayer.startPoint = CGPoint(x: 0.5, y: 0)
-        gradientLayer.endPoint = CGPoint(x: 0.5, y: 1)
-        nativeAdView.layer.addSublayer(gradientLayer)
-
-        let topStack = UIStackView(arrangedSubviews: [adBadgeLabel, iconImageView, bodyLabel, UIView()])
+        let topStack = UIStackView(arrangedSubviews: [adBadgeLabel, UIView()])
         topStack.axis = .horizontal
         topStack.spacing = 6
         topStack.alignment = .center
@@ -153,31 +148,39 @@ private final class NativeAdContainerView: UIView {
         nativeAdView.addSubview(topStack)
 
         adBadgeLabel.text = "Reklam"
-        adBadgeLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        adBadgeLabel.font = .systemFont(ofSize: 15, weight: .bold)
         adBadgeLabel.textColor = .white
+        adBadgeLabel.backgroundColor = UIColor.black.withAlphaComponent(0.45)
+        adBadgeLabel.layer.cornerRadius = 4
+        adBadgeLabel.clipsToBounds = true
+        adBadgeLabel.textAlignment = .center
+        adBadgeLabel.translatesAutoresizingMaskIntoConstraints = false
 
         iconImageView.tintColor = .white
         iconImageView.contentMode = .scaleAspectFit
         iconImageView.translatesAutoresizingMaskIntoConstraints = false
-        iconImageView.layer.cornerRadius = 7
+        iconImageView.layer.cornerRadius = 18
         iconImageView.clipsToBounds = true
+        nativeAdView.addSubview(iconImageView)
 
         bodyLabel.font = .systemFont(ofSize: 11, weight: .medium)
         bodyLabel.textColor = UIColor.white.withAlphaComponent(0.82)
         bodyLabel.lineBreakMode = .byTruncatingTail
+        bodyLabel.isHidden = true
 
-        headlineLabel.font = .systemFont(ofSize: 19, weight: .bold)
+        headlineLabel.font = .systemFont(ofSize: 12, weight: .medium)
         headlineLabel.textColor = .white
-        headlineLabel.numberOfLines = 2
+        headlineLabel.numberOfLines = 1
         headlineLabel.textAlignment = .center
         headlineLabel.translatesAutoresizingMaskIntoConstraints = false
+        headlineLabel.isHidden = true
         nativeAdView.addSubview(headlineLabel)
 
         callToActionButton.translatesAutoresizingMaskIntoConstraints = false
-        callToActionButton.titleLabel?.font = .systemFont(ofSize: 14, weight: .semibold)
+        callToActionButton.titleLabel?.font = .systemFont(ofSize: 18, weight: .bold)
         callToActionButton.setTitleColor(.white, for: .normal)
-        callToActionButton.backgroundColor = UIColor(red: 0.08, green: 0.08, blue: 0.08, alpha: 0.92)
-        callToActionButton.layer.cornerRadius = 14
+        callToActionButton.backgroundColor = UIColor(red: 0.15, green: 0.15, blue: 0.15, alpha: 1)
+        callToActionButton.layer.cornerRadius = 8
         callToActionButton.isUserInteractionEnabled = false
         nativeAdView.addSubview(callToActionButton)
 
@@ -195,25 +198,30 @@ private final class NativeAdContainerView: UIView {
 
             mediaView.leadingAnchor.constraint(equalTo: nativeAdView.leadingAnchor),
             mediaView.trailingAnchor.constraint(equalTo: nativeAdView.trailingAnchor),
-            mediaView.topAnchor.constraint(equalTo: nativeAdView.topAnchor),
-            mediaView.bottomAnchor.constraint(equalTo: nativeAdView.bottomAnchor),
+            mediaView.topAnchor.constraint(equalTo: nativeAdView.topAnchor, constant: 18),
+            mediaView.bottomAnchor.constraint(equalTo: callToActionButton.topAnchor, constant: -10),
 
             topStack.leadingAnchor.constraint(equalTo: nativeAdView.leadingAnchor, constant: 12),
             topStack.trailingAnchor.constraint(equalTo: nativeAdView.trailingAnchor, constant: -12),
-            topStack.topAnchor.constraint(equalTo: nativeAdView.topAnchor, constant: 10),
+            topStack.topAnchor.constraint(equalTo: nativeAdView.topAnchor, constant: 12),
 
-            iconImageView.widthAnchor.constraint(equalToConstant: 18),
-            iconImageView.heightAnchor.constraint(equalToConstant: 18),
+            adBadgeLabel.widthAnchor.constraint(greaterThanOrEqualToConstant: 72),
+            adBadgeLabel.heightAnchor.constraint(equalToConstant: 30),
+
+            iconImageView.centerXAnchor.constraint(equalTo: mediaView.centerXAnchor),
+            iconImageView.centerYAnchor.constraint(equalTo: mediaView.centerYAnchor),
+            iconImageView.widthAnchor.constraint(equalToConstant: 112),
+            iconImageView.heightAnchor.constraint(equalToConstant: 112),
 
             headlineLabel.centerXAnchor.constraint(equalTo: nativeAdView.centerXAnchor),
             headlineLabel.centerYAnchor.constraint(equalTo: nativeAdView.centerYAnchor, constant: -6),
             headlineLabel.leadingAnchor.constraint(greaterThanOrEqualTo: nativeAdView.leadingAnchor, constant: 32),
             headlineLabel.trailingAnchor.constraint(lessThanOrEqualTo: nativeAdView.trailingAnchor, constant: -32),
 
-            callToActionButton.leadingAnchor.constraint(equalTo: nativeAdView.leadingAnchor, constant: 10),
-            callToActionButton.trailingAnchor.constraint(equalTo: nativeAdView.trailingAnchor, constant: -10),
-            callToActionButton.bottomAnchor.constraint(equalTo: nativeAdView.bottomAnchor, constant: -8),
-            callToActionButton.heightAnchor.constraint(equalToConstant: 42)
+            callToActionButton.leadingAnchor.constraint(equalTo: nativeAdView.leadingAnchor, constant: 16),
+            callToActionButton.trailingAnchor.constraint(equalTo: nativeAdView.trailingAnchor, constant: -16),
+            callToActionButton.bottomAnchor.constraint(equalTo: nativeAdView.bottomAnchor, constant: -14),
+            callToActionButton.heightAnchor.constraint(equalToConstant: 52)
         ])
     }
 }

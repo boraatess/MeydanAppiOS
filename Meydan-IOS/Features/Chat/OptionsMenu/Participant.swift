@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ParticipantsView: View {
     @ObservedObject var viewModel: ChatViewModel
+    var onParticipantTap: (Participant) -> Void = { _ in }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -62,7 +63,9 @@ struct ParticipantsView: View {
                     ScrollView(showsIndicators: false) {
                         VStack(spacing: 12) {
                             ForEach(viewModel.participants) { participant in
-                                ParticipantRow(participant: participant)
+                                ParticipantRow(participant: participant) {
+                                    onParticipantTap(participant)
+                                }
                             }
                         }
                         .padding(.horizontal, 24)
@@ -89,29 +92,33 @@ struct ParticipantsView: View {
 
 struct ParticipantRow: View {
     let participant: Participant
+    let onTap: () -> Void
     
     var body: some View {
-        HStack(spacing: 12) {
-            participantAvatar
-            
-            HStack(spacing: 4) {
-                Text(participant.name)
-                    .font(.manrope(.bold, size: 16))
-                    .foregroundColor(.white)
-                
-                if !participant.username.isEmpty {
-                    Text("@\(participant.username)")
-                        .font(.manrope(.regular, size: 14))
-                        .foregroundColor(.white.opacity(0.7))
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                participantAvatar
+
+                HStack(spacing: 4) {
+                    Text(participant.name)
+                        .font(.manrope(.bold, size: 16))
+                        .foregroundColor(.white)
+
+                    if !participant.username.isEmpty {
+                        Text("@\(participant.username)")
+                            .font(.manrope(.regular, size: 14))
+                            .foregroundColor(.white.opacity(0.7))
+                    }
                 }
+
+                Spacer()
             }
-            
-            Spacer()
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(Color(hex: "#2C2C2C"))
+            .cornerRadius(16)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Color(hex: "#2C2C2C"))
-        .cornerRadius(16)
+        .buttonStyle(.plain)
     }
     
     @ViewBuilder
@@ -144,8 +151,9 @@ struct ParticipantRow: View {
     }
 }
 
-struct Participant: Identifiable {
+struct Participant: Identifiable, Hashable {
     let id: String
+    let userId: String
     let name: String
     let username: String
     let avatar: String?

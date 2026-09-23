@@ -42,18 +42,14 @@ struct PersonalInfoView: View {
                     
                     Button {
                         if isEditing {
-                            print("is text editing")
                             Task {
                                 await viewModel.updateProfile()
+                                if viewModel.errorMessage == nil {
+                                    withAnimation { isEditing = false }
+                                }
                             }
-                            
-                        }
-                        else {
-                            print("text editing done")
-                            
-                        }
-                        withAnimation {
-                            isEditing.toggle()
+                        } else {
+                            withAnimation { isEditing = true }
                         }
                     } label: {
                         ZStack {
@@ -147,6 +143,9 @@ struct PersonalInfoView: View {
                         },
                         onSelectRemove: {
                             withAnimation(.easeInOut(duration: 0.2)) { showImageOptions = false }
+                            Task {
+                                await viewModel.removeProfileImage()
+                            }
                         }
                     )
                     .padding(.top, 205)

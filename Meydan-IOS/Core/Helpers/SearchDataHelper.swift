@@ -8,14 +8,18 @@ enum SearchDataHelper {
     static func mapFavorite(_ favorite: FavoriteStreamerResponse) -> FavoriteStreamer {
         let username = favorite.username.map { $0.hasPrefix("@") ? $0 : "@\($0)" } ?? "@unknown"
         let isLive = favorite.isLive ?? favorite.liveRoom.map { $0.status == 1 } ?? false
+        let liveTitle = [favorite.liveRoom?.title, favorite.broadcastTitle]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
 
         return FavoriteStreamer(
             id: favorite.id,
             isLive: isLive,
-            title: favorite.liveRoom?.title,
+            liveRoomId: favorite.liveRoom?.id,
+            title: liveTitle,
             name: favorite.fullName ?? favorite.username ?? "Kullanıcı",
             username: username,
-            imageName: favorite.profile?.avatar ?? ""
+            imageName: favorite.profile?.avatar ?? favorite.avatar ?? ""
         )
     }
 
@@ -62,10 +66,13 @@ enum SearchDataHelper {
             imageUrl: imageUrl,
             viewersCount: viewersCount,
             creatorName: creatorName,
+            creatorUsername: apiRoom.host.username,
+            creatorFullName: apiRoom.host.fullName,
             creatorImageName: creatorImageName,
             isLive: isLive,
             scheduledDate: scheduledDate,
             scheduledText: scheduledText,
+            categoryId: apiRoom.category?._id,
             categoryName: apiRoom.category?.name
         )
     }
@@ -79,11 +86,14 @@ enum SearchDataHelper {
                 imageUrl: post.roomImage.isEmpty ? post.imageName : post.roomImage,
                 viewersCount: post.viewersCount,
                 creatorName: post.creatorUsername,
+                creatorUsername: post.creatorUsername,
+                creatorFullName: post.creatorName,
                 creatorImageName: post.creatorImageName,
                 isLive: true,
                 scheduledDate: nil,
                 scheduledText: nil,
-                categoryName: nil
+                categoryId: post.categoryId,
+                categoryName: post.categoryName
             )
         }
     }

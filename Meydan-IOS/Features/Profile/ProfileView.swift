@@ -4,64 +4,72 @@ struct ProfileView: View {
     @StateObject private var viewModel = ProfileViewModel()
     @Environment(\.dismiss) private var dismiss
     @State private var optionsPopupVisibleForID: String? = nil
+    @State private var editingBroadcast: ScheduledBroadcast? = nil
+    @State private var chatDestination: ChatDestination? = nil
+    @State private var broadcastOptionsKind: BroadcastOptionsKind = .scheduled
     
     @Binding var path: [ProfileNavigation]
     
     var body: some View {
         NavigationStack(path: $path) {
-            VStack(spacing: 8) {
-                VStack(spacing: 16) {
-                    if let user = viewModel.userProfile {
-                        ProfileHeaderSection(user: user, onShareTapped: {
-                            viewModel.fetchShareURL(username: user.username)
-                        })
+            GeometryReader { geometry in
+                let safeWidth = geometry.size.width.isFinite ? max(geometry.size.width, 0) : 0
+                let horizontalPadding = min(max(safeWidth * 0.045, 16), 24)
+                let contentMaxWidth = min(max(safeWidth - (horizontalPadding * 2), 0), 560)
 
-                        Divider()
-                            .background(Color.grayDark)
+                VStack(spacing: 8) {
+                    VStack(spacing: 16) {
+                        if let user = viewModel.userProfile {
+                            ProfileHeaderSection(user: user, onShareTapped: {
+                                viewModel.fetchShareURL(username: user.username)
+                            })
+
+                            Divider()
+                                .background(Color.grayDark)
+                        }
+
+                        BroadcastSectionTitle()
                     }
-
-                    TabSwitcherView(selectedTab: $viewModel.selectedTab)
-                }
-                .padding(.top, 8)
-                .padding(.bottom, 24)
-                .padding(.horizontal, 16)
-                
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 10) {
-                        AdMobBannerAdView(adUnitID: AdMobConfig.homeBannerAdUnitID)
-                            .padding(.horizontal, 24)
-                            .padding(.bottom, 4)
-
-                        switch viewModel.selectedTab {
-                        case .scheduled:
-                            ForEach(viewModel.scheduledBroadcasts) { broadcast in
-                                BroadcastCardView(broadcast: .scheduled(broadcast)) {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                        optionsPopupVisibleForID = broadcast.id.uuidString
-                                    }
+                    .padding(.top, 16)
+                    .padding(.bottom, 14)
+                    .padding(.horizontal, 8)
+                    
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 10) {
+                            if viewModel.scheduledBroadcasts.isEmpty {
+                                VStack {
+                                    Spacer(minLength: 100)
+                                    EmptyProfileBroadcastStateView()
+                                    Spacer(minLength: 100)
                                 }
-                            }
-                        case .past:
-                            ForEach(viewModel.pastBroadcasts) { broadcast in
-                                BroadcastCardView(broadcast: .past(broadcast)) {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                        optionsPopupVisibleForID = broadcast.id.uuidString
+                                .frame(maxWidth: .infinity)
+                            } else {
+                                ForEach(viewModel.scheduledBroadcasts) { broadcast in
+                                    BroadcastCardView(broadcast: .scheduled(broadcast)) {
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                            broadcastOptionsKind = .scheduled
+                                            optionsPopupVisibleForID = broadcast.id
+                                        }
                                     }
+                                    .padding(.horizontal, 4)
                                 }
                             }
                         }
+                        .padding(.bottom)
                     }
-                    .padding(.bottom)
+                    .pullToRefresh {
+                        await viewModel.fetchData(force: true)
+                    }
                 }
+                .frame(maxWidth: contentMaxWidth, maxHeight: .infinity, alignment: .top)
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .padding(8)
-            .background(Color.background.ignoresSafeArea(edges: .bottom))
+            .background(Color.black.ignoresSafeArea(edges: .bottom))
             .blur(radius: optionsPopupVisibleForID != nil ? 2 : 0)
             .task {
                 await viewModel.onAppear()
             }
-            .padding(.horizontal, 16)
             .navigationBarHidden(true)
             .overlay {
                 if optionsPopupVisibleForID != nil {
@@ -73,12 +81,59 @@ struct ProfileView: View {
                             }
 
                         BroadcastOptionsPopUp(
-                            onDismiss: { withAnimation { optionsPopupVisibleForID = nil } }
+                            kind: broadcastOptionsKind,
+                            isStartingRoom: viewModel.isStartingRoom,
+                            isDeletingRoom: viewModel.isDeletingRoom,
+                            onDismiss: { withAnimation { optionsPopupVisibleForID = nil } },
+                            onStart: {
+                                guard let selectedID = optionsPopupVisibleForID,
+                                      let broadcast = viewModel.scheduledBroadcasts.first(where: { $0.id == selectedID }) else {
+                                    withAnimation { optionsPopupVisibleForID = nil }
+                                    return
+                                }
+
+                                withAnimation { optionsPopupVisibleForID = nil }
+                                Task {
+                                    let didStart = await viewModel.startRoom(id: selectedID)
+                                    if didStart {
+                                        let destination = ChatDestination(
+                                            roomId: selectedID,
+                                            roomTitle: broadcast.title,
+                                            roomOwnerUsername: viewModel.userProfile?.username ?? "",
+                                            roomOwnerUserId: viewModel.userID
+                                        )
+                                        chatDestination = destination
+                                        await viewModel.fetchData(force: true)
+                                    }
+                                }
+                            },
+                            onEdit: {
+                                guard let selectedID = optionsPopupVisibleForID,
+                                      let broadcast = viewModel.scheduledBroadcasts.first(where: { $0.id == selectedID }) else {
+                                    withAnimation { optionsPopupVisibleForID = nil }
+                                    return
+                                }
+
+                                editingBroadcast = broadcast
+                                withAnimation { optionsPopupVisibleForID = nil }
+                            },
+                            onDelete: {
+                                guard let selectedID = optionsPopupVisibleForID else {
+                                    withAnimation { optionsPopupVisibleForID = nil }
+                                    return
+                                }
+
+                                withAnimation { optionsPopupVisibleForID = nil }
+                                Task {
+                                    _ = await viewModel.deleteRoom(id: selectedID)
+                                }
+                            }
                         )
                         .transition(.scale(scale: 0.9).combined(with: .opacity))
                     }
                 }
             }
+            .padding(.horizontal, 8)
             .navigationDestination(for: ProfileNavigation.self) { destination in
                 switch destination {
                 case .followers(let userId):
@@ -116,11 +171,53 @@ struct ProfileView: View {
                 ShareActivityView(items: [url])
             }
         }
+        .fullScreenCover(item: $editingBroadcast) { broadcast in
+            CreateRoomView(
+                mode: .edit(
+                    EditRoomData(
+                        roomId: broadcast.id,
+                        title: broadcast.title,
+                        date: broadcast.scheduledDate,
+                        categoryId: broadcast.categoryId,
+                        categoryName: broadcast.categoryName,
+                        imageURL: broadcast.imageURL
+                    )
+                ),
+                onBack: {
+                    editingBroadcast = nil
+                    Task {
+                        await viewModel.fetchData(force: true)
+                    }
+                }
+            )
+        }
+        .alert("Yayın başlatılamadı", isPresented: Binding(
+            get: { viewModel.startRoomErrorMessage != nil },
+            set: { if !$0 { viewModel.startRoomErrorMessage = nil } }
+        )) {
+            Button("Tamam", role: .cancel) { viewModel.startRoomErrorMessage = nil }
+        } message: {
+            Text(viewModel.startRoomErrorMessage ?? "")
+        }
+        .loadingOverlay(isPresented: $viewModel.isStartingRoom, message: "Yayın açılıyor...")
+        .fullScreenCover(item: $chatDestination) { destination in
+            ChatView(
+                roomId: destination.roomId,
+                roomTitle: destination.roomTitle,
+                roomOwnerUsername: destination.roomOwnerUsername,
+                roomOwnerUserId: destination.roomOwnerUserId
+            )
+        }
     }
 }
 
 enum ProfileNavigation: Hashable {
     case followers(userId: String), following(userId: String), settings(user: UserProfile), personalInfo(user: UserProfile), accountSettings(user: UserProfile), contactUs, passwordRenewal, deleteAccount, blockedUsers, emailUpdate, emailVerification(email: String), deactivateAccount, otherProfile(userId: String, name: String, username: String)
+}
+
+private enum BroadcastOptionsKind: Equatable {
+    case scheduled
+    case past
 }
 
 // MARK: - Header Section
@@ -131,7 +228,7 @@ private struct ProfileHeaderSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             // First Row: Avatar, Name, Stats & Icons
-            HStack(alignment: .top, spacing: 20) {
+            HStack(alignment: .top, spacing: 12) {
                 // Avatar
                 Group {
                     if user.profileImageURL.starts(with: "http") {
@@ -155,21 +252,25 @@ private struct ProfileHeaderSection: View {
                             .foregroundColor(.white.opacity(0.7))
                     }
                 }
-                .frame(width: 100, height: 100)
+                .frame(width: 76, height: 76)
                 .background(Color.white.opacity(0.1))
                 .clipShape(Circle())
                 .overlay(Circle().stroke(Color.white.opacity(0.2), lineWidth: 1))
                 
                 VStack(alignment: .leading, spacing: 12) {
                     // Name and Icons
-                    HStack {
+                    HStack(spacing: 8) {
                         Text(user.name)
-                            .font(.manrope(.bold, size: 24))
+                            .font(.manrope(.bold, size: 20))
                             .foregroundColor(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.78)
+                            .truncationMode(.tail)
+                            .layoutPriority(1)
                         
                         Spacer()
                         
-                        HStack(spacing: 16) {
+                        HStack(spacing: 12) {
                             // Profili Paylaş: /user/share/{username}
                             Button(action: onShareTapped) {
                                 Image("share")
@@ -185,10 +286,11 @@ private struct ProfileHeaderSection: View {
                                     .foregroundColor(.white)
                             }
                         }
+                        .fixedSize()
                     }
                     
                     // Stats
-                    HStack(spacing: 24) {
+                    HStack(spacing: 10) {
                         StatItem(count: "\(user.streamCount)", label: "yayın")
                         
                         NavigationLink(value: ProfileNavigation.followers(userId: user.id)) {
@@ -200,6 +302,7 @@ private struct ProfileHeaderSection: View {
                         }
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             
             // Second Row: Bio Details
@@ -207,14 +310,18 @@ private struct ProfileHeaderSection: View {
                 Text(user.username)
                     .font(.manrope(.bold, size: 16))
                     .foregroundColor(.white)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 
                 Text(user.bio)
                     .font(.manrope(.medium, size: 14))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.leading)
                     .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -225,71 +332,44 @@ private struct StatItem: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(count)
-                .font(.manrope(.bold, size: 18))
-                .foregroundColor(.white)
-            Text(label)
-                .font(.manrope(.medium, size: 14))
-                .foregroundColor(.white.opacity(0.8))
-        }
-    }
-}
-
-// MARK: - Tab Switcher
-private struct TabSwitcherView: View {
-    @Binding var selectedTab: ProfileViewModel.ProfileTab
-    
-    var body: some View {
-        HStack(spacing: 0) {
-            TabButton(title: "Planlanan Yayınlar", isSelected: selectedTab == .scheduled) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    selectedTab = .scheduled
-                }
-            }
-            
-            TabButton(title: "Geçmiş Yayınlar", isSelected: selectedTab == .past) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                    selectedTab = .past
-                }
-            }
-        }
-    }
-}
-
-/*
-private struct TabButton: View {
-    let title: String
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Text(title)
-            .font(.manrope(.bold, size: 16))
-            .foregroundColor(isSelected ? .branding : .white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(Color.white.opacity(0.001)) // Hit-testable area
-            .onTapGesture {
-                action()
-            }
-    }
-}
-*/
-
-private struct TabButton: View {
-    let title: String
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Text(title)
                 .font(.manrope(.bold, size: 16))
-                .foregroundColor(isSelected ? .branding : .white)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
+                .foregroundColor(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+            Text(label)
+                .font(.manrope(.medium, size: 12))
+                .foregroundColor(.white.opacity(0.8))
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
         }
-        .buttonStyle(.plain)
-        .contentShape(Rectangle())
+        .frame(minWidth: 42, alignment: .leading)
+    }
+}
+
+private struct BroadcastSectionTitle: View {
+    
+    var body: some View {
+        Text("Canlı & Planlanan Yayınlar")
+            .font(.manrope(.bold, size: 18))
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .padding(.top, 4)
+            .padding(.bottom, 2)
+    }
+}
+
+private struct EmptyProfileBroadcastStateView: View {
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("Maalesef")
+                .font(.manrope(.bold, size: 24))
+                .foregroundColor(.white)
+
+            Text("burada hiçbir şey yok!")
+                .font(.manrope(.bold, size: 24))
+                .foregroundColor(.white)
+        }
+        .multilineTextAlignment(.center)
     }
 }
 
@@ -297,55 +377,77 @@ private struct TabButton: View {
 
 // MARK: - Broadcast Options Pop-up
 private struct BroadcastOptionsPopUp: View {
+    let kind: BroadcastOptionsKind
+    let isStartingRoom: Bool
+    let isDeletingRoom: Bool
     let onDismiss: () -> Void
+    let onStart: () -> Void
+    let onEdit: () -> Void
+    let onDelete: () -> Void
     
     var body: some View {
         VStack(spacing: 0) {
-            Button(action: onDismiss) {
-                Text("Yayını Şimdi Başlat")
-                    .font(.manrope(.medium, size: 16))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .contentShape(Rectangle())
+            switch kind {
+            case .scheduled:
+                optionButton(title: isStartingRoom ? "Yayın Başlatılıyor..." : "Yayını Şimdi Başlat", action: onStart)
+                optionDivider
+                optionButton(title: "Yayını Düzenle", action: onEdit)
+                optionDivider
+                optionButton(title: isDeletingRoom ? "Yayın Siliniyor..." : "Yayını Sil", isDestructive: true, action: onDelete)
+            case .past:
+                pastDeleteButton
             }
-            .buttonStyle(.plain)
-            
-            Divider().background(Color.white.opacity(0.1))
-            
-            Button(action: onDismiss) {
-                Text("Yayını Düzenle")
-                    .font(.manrope(.medium, size: 16))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            
-            Divider().background(Color.white.opacity(0.1))
-            
-            Button(action: onDismiss) {
-                Text("Yayını Sil")
-                    .font(.manrope(.medium, size: 16))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color(red: 0.12, green: 0.12, blue: 0.12)) // Dark modal background
-        )
+	        }
+        .disabled(isStartingRoom || isDeletingRoom)
+        .padding(.vertical, kind == .past ? 0 : 8)
+        .frame(maxWidth: 310)
+        .background(backgroundShape)
         .overlay(
             RoundedRectangle(cornerRadius: 20)
-                .stroke(Color.white.opacity(0.05), lineWidth: 1)
+                .stroke(Color.white.opacity(kind == .past ? 0 : 0.05), lineWidth: 1)
         )
         .padding(.horizontal, 40)
         .shadow(color: .black.opacity(0.5), radius: 20, x: 0, y: 10)
+    }
+
+    @ViewBuilder
+    private var backgroundShape: some View {
+        if kind == .past {
+            Color.clear
+        } else {
+            RoundedRectangle(cornerRadius: 20)
+                .fill(Color(red: 0.12, green: 0.12, blue: 0.12))
+        }
+    }
+
+    private var pastDeleteButton: some View {
+        Button(action: onDelete) {
+            Text(isDeletingRoom ? "Yayın Siliniyor..." : "Yayını Sil")
+                .font(.manrope(.medium, size: 14))
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+                .background(Color(red: 0.12, green: 0.12, blue: 0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var optionDivider: some View {
+        Divider().background(Color.white.opacity(0.1))
+    }
+
+    private func optionButton(title: String, isDestructive: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.manrope(.medium, size: 16))
+                .foregroundColor(isDestructive ? Color(hex: "#FF5C5C") : .white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 

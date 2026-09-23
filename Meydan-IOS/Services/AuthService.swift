@@ -42,12 +42,18 @@ class AuthService: NSObject, AuthServiceProtocol {
     
     // MARK: - Normal Login
     func login(request: LoginRequest) async throws -> LoginResponse {
+        if CredentialValidation.containsEmoji(request.identifier) || CredentialValidation.containsEmoji(request.password) {
+            throw NetworkError.serverError(message: "E-posta, kullanıcı adı veya parola emoji içeremez.")
+        }
         let url = "\(baseURL)/user/login"
         return try await performRequest(url: url, method: .post, parameters: request)
     }
     
     // MARK: - Register
     func register(request: RegisterRequest) async throws -> RegisterResponse {
+        if let error = CredentialValidation.emailError(request.email) ?? CredentialValidation.passwordError(request.password) {
+            throw NetworkError.serverError(message: error)
+        }
         // old -> DEBUG: [POST] https://meydan-backend-1.onrender.com/user/register
         // new -> https://meydan-af935.web.app/api/user/register
         
@@ -63,6 +69,9 @@ class AuthService: NSObject, AuthServiceProtocol {
     
     // MARK: - Forgot / Reset Password
     func forgotPassword(request: ForgotPasswordRequest) async throws -> Empty {
+        if let error = CredentialValidation.emailError(request.email) {
+            throw NetworkError.serverError(message: error)
+        }
         let url = "\(baseURL)/user/forgot-password"
         return try await performRequest(url: url, method: .post, parameters: request)
     }
@@ -73,6 +82,9 @@ class AuthService: NSObject, AuthServiceProtocol {
     }
     
     func resetPassword(request: ResetPasswordRequest) async throws -> Empty {
+        if let error = CredentialValidation.passwordError(request.newPassword) {
+            throw NetworkError.serverError(message: error)
+        }
         let url = "\(baseURL)/user/reset-password"
         return try await performRequest(url: url, method: .post, parameters: request)
     }
@@ -112,21 +124,33 @@ class AuthService: NSObject, AuthServiceProtocol {
     }
 
     func setPassword(request: SetPasswordRequest) async throws -> Empty {
+        if let error = CredentialValidation.passwordError(request.newPass) {
+            throw NetworkError.serverError(message: error)
+        }
         let url = "\(baseURL)/user/set-password"
         return try await performRequest(url: url, method: .put, parameters: request)
     }
 
     func updateEmail(request: UpdateEmailRequest) async throws -> Empty {
+        if let error = CredentialValidation.emailError(request.newEmail) {
+            throw NetworkError.serverError(message: error)
+        }
         let url = "\(baseURL)/user/update-email"
         return try await performRequest(url: url, method: .put, parameters: request)
     }
 
     func requestEmailUpdate(request: RequestEmailUpdateRequest) async throws -> Empty {
+        if let error = CredentialValidation.emailError(request.newEmail) {
+            throw NetworkError.serverError(message: error)
+        }
         let url = "\(baseURL)/user/request-email-update"
         return try await performRequest(url: url, method: .post, parameters: request)
     }
 
     func verifyEmailUpdate(request: VerifyEmailUpdateRequest) async throws -> Empty {
+        if let error = CredentialValidation.emailError(request.newEmail) {
+            throw NetworkError.serverError(message: error)
+        }
         let url = "\(baseURL)/user/verify-email-update"
         return try await performRequest(url: url, method: .post, parameters: request)
     }

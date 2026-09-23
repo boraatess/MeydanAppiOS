@@ -11,6 +11,7 @@ class RegisterViewModel: ObservableObject {
     @Published var email: String = ""
     @Published var password: String = ""
     @Published var confirmPassword: String = ""
+    @Published var isAgreementAccepted: Bool = false
     
     // Her alan için özel hata mesajları
     @Published var fullNameError: String?
@@ -18,6 +19,7 @@ class RegisterViewModel: ObservableObject {
     @Published var emailError: String?
     @Published var passwordError: String?
     @Published var confirmPasswordError: String?
+    @Published var agreementError: String?
     
     @Published var generalErrorMessage: String?
     
@@ -47,9 +49,7 @@ class RegisterViewModel: ObservableObject {
     }
     
     private func validateEmail() -> Bool {
-        let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,64}"
-        let emailPredicate = NSPredicate(format:"SELF MATCHES %@", emailRegex)
-        return emailPredicate.evaluate(with: email)
+        CredentialValidation.emailError(email) == nil
     }
     
     private func clearErrors() {
@@ -58,6 +58,7 @@ class RegisterViewModel: ObservableObject {
         emailError = nil
         passwordError = nil
         confirmPasswordError = nil
+        agreementError = nil
         generalErrorMessage = nil
     }
     
@@ -83,7 +84,10 @@ class RegisterViewModel: ObservableObject {
             hasClientError = true
         }
         
-        if !validatePassword() {
+        if let error = CredentialValidation.passwordError(password) {
+            passwordError = error
+            hasClientError = true
+        } else if !validatePassword() {
             passwordError = "Şifreniz, 1 büyük karakter, 1 küçük karakter ve rakam içermelidir."
             hasClientError = true
         }
@@ -95,7 +99,20 @@ class RegisterViewModel: ObservableObject {
             confirmPasswordError = "Şifreler uyuşmuyor."
             hasClientError = true
         }
+
+        if !isAgreementAccepted {
+            agreementError = "Kayıt olmak için kullanıcı sözleşmesini onaylamalısınız."
+            hasClientError = true
+        }
         
+        if let warning = ContentFilter.warning(for: fullName) {
+            fullNameError = warning
+            hasClientError = true
+        }
+        if let warning = ContentFilter.warning(for: username) {
+            usernameError = warning
+            hasClientError = true
+        }
         if hasClientError { return }
         
         let request = RegisterRequest(
@@ -196,6 +213,7 @@ class RegisterViewModel: ObservableObject {
         do {
             let response = try await authService.socialLogin(request: request)
             if let token = response.token {
+                try await FirebaseAuthSessionManager.signInIfNeeded(withCustomToken: response.firebaseToken)
                 authManager.login(token: token)
                 isLoggedIn = true
                 do {
@@ -232,4 +250,3 @@ class RegisterViewModel: ObservableObject {
         isLoading = false
     }
 }
-

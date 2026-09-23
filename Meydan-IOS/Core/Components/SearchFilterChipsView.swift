@@ -9,6 +9,7 @@ enum SearchFilterType: String, CaseIterable, Identifiable {
 
 struct SearchFilterChipsView: View {
     @Binding var selectedFilter: SearchFilterType
+    var horizontalPadding: CGFloat = 20
 
     var body: some View {
         HStack(spacing: 12) {
@@ -39,6 +40,6 @@ struct SearchFilterChipsView: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, horizontalPadding)
     }
 }

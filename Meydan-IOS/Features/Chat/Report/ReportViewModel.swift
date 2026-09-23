@@ -35,6 +35,7 @@ final class ReportViewModel: ObservableObject {
     @Published var descriptionHasError: Bool = false
     @Published var isSending: Bool = false
     @Published var showSuccessOverlay: Bool = false
+    @Published var errorMessage: String?
     
     private let reportService: ReportServiceProtocol
     
@@ -57,7 +58,15 @@ final class ReportViewModel: ObservableObject {
     
     func sendReport() {
         // Validasyon
-        guard validate(), let reason = selectedReason else { return }
+        guard !isSending, !showSuccessOverlay else { return }
+        errorMessage = nil
+        if let warning = ContentFilter.warning(for: descriptionText) {
+            errorMessage = warning
+            return
+        }
+        guard validate() else { return }
+        let reason = selectedReason ?? .other
+        let trimmedDescription = descriptionText.trimmingCharacters(in: .whitespacesAndNewlines)
         
         isSending = true
         
@@ -77,7 +86,7 @@ final class ReportViewModel: ObservableObject {
             targetType: targetType,
             targetId: targetId,
             reason: reason.displayText,
-            description: descriptionText
+            description: trimmedDescription
         )
         
         Task {
@@ -90,13 +99,16 @@ final class ReportViewModel: ObservableObject {
             } catch {
                 print("DEBUG: Şikayet gönderilemedi: \(error.localizedDescription)")
                 self.isSending = false
-                // Şimdilik hata olsa da success gösterebilir veya error popup ekleyebilirsiniz.
+                self.errorMessage = error.localizedDescription
             }
         }
     }
     
     private func validate() -> Bool {
-        if descriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        let hasSelectedReason = selectedReason != nil
+        let hasDescription = !descriptionText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        if !hasSelectedReason && !hasDescription {
             withAnimation(.easeInOut(duration: 0.15)) { descriptionHasError = true }
             return false
         }

@@ -55,6 +55,11 @@ final class ReportService: ReportServiceProtocol {
             }
 
             print("DEBUG: [\(method.rawValue)] \(url)")
+            if let parameters,
+               let bodyData = try? JSONEncoder().encode(parameters),
+               let body = String(data: bodyData, encoding: .utf8) {
+                print("DEBUG: Request Body: \(body)")
+            }
 
             request
                 .validate()
