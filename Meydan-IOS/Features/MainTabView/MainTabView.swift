@@ -5,6 +5,7 @@ struct MainTabView: View {
     
     @State private var selectedTab: Tab = .home
     @State private var previousTab: Tab = .home
+    @State private var navigationSession = UUID()
     @State private var profilePath: [ProfileNavigation] = []
     @State private var homePath = NavigationPath()
     @State private var discoverPath = NavigationPath()
@@ -45,6 +46,7 @@ struct MainTabView: View {
                     Color.black.ignoresSafeArea()
                 }
             }
+            .id(navigationSession)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if showsTabBar {
@@ -66,6 +68,14 @@ struct MainTabView: View {
         }
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .preferredColorScheme(.dark)
+        .onReceive(NotificationCenter.default.publisher(for: .roomClosedReturnHome)) { _ in
+            homePath = NavigationPath()
+            discoverPath = NavigationPath()
+            profilePath = []
+            previousTab = .home
+            selectedTab = .home
+            navigationSession = UUID()
+        }
         .task {
             await notificationBadge.refresh()
         }

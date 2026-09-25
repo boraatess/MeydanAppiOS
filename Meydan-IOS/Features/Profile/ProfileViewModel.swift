@@ -2,6 +2,7 @@ import Foundation
 
 @MainActor
 class ProfileViewModel: ObservableObject {
+    
     struct CachedData {
         let userProfile: UserProfile?
         let pastBroadcasts: [PastBroadcast]
@@ -100,6 +101,7 @@ class ProfileViewModel: ObservableObject {
     }
 
     func deleteRoom(id: String) async -> Bool {
+        guard !isDeletingRoom, !isStartingRoom else { return false }
         let roomId = id.trimmingCharacters(in: .whitespacesAndNewlines)
 
         guard !roomId.isEmpty else {

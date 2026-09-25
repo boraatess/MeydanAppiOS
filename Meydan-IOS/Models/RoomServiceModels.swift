@@ -243,3 +243,8 @@ struct RoomViewersResponse: Decodable, Sendable {
             ?? []
     }
 }
+
+struct BanRoomUserRequest: Encodable, Sendable {
+    let roomId: String
+    let userIdToBan: String
+}

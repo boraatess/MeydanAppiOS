@@ -95,6 +95,15 @@ struct ChatView: View {
             .navigationBarHidden(true)
         }
         .overlay(menuOverlay)
+        .alert("Odaya katılınamadı", isPresented: Binding(
+            get: { viewModel.joinRoomError != nil },
+            set: { if !$0 { viewModel.joinRoomError = nil } }
+        )) {
+            Button("Tekrar Dene") { viewModel.connectToWebSocket() }
+            Button("Geri Dön", role: .cancel) { dismiss() }
+        } message: {
+            Text(viewModel.joinRoomError ?? "")
+        }
         .dismissKeyboardOnTap()
         .animation(.spring(response: 0.35, dampingFraction: 0.7), value: viewModel.showMessageActions)
         .onAppear {
@@ -298,7 +307,7 @@ struct ChatView: View {
                 .lineSpacing(5)
 
             Button(action: {
-                leaveChat()
+                returnHomeAfterRoomClosed()
             }) {
                 Text("Anasayfaya Dön")
                     .font(.manrope(.bold, size: 16))
@@ -590,20 +599,24 @@ struct ChatView: View {
                     .frame(width: 28, height: 28)
             }
             .foregroundStyle(.white)
-            .disabled(viewModel.currentMessageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .disabled(!viewModel.isJoinedToRoom || viewModel.showRoomEndedInfo || viewModel.currentMessageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .animation(.easeInOut, value: viewModel.currentMessageText.isEmpty)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(Color(red: 54/255, green: 54/255, blue: 54/255, opacity: 1))
         .cornerRadius(16, corners: .allCorners)
-        .alert("Metninizi düzenleyin", isPresented: Binding(
-            get: { viewModel.messageValidationError != nil },
-            set: { if !$0 { viewModel.messageValidationError = nil } }
+        .alert(viewModel.roomActionSuccess != nil ? "İşlem tamamlandı" : (viewModel.roomActionError != nil ? "İşlem tamamlanamadı" : "Metninizi düzenleyin"), isPresented: Binding(
+            get: { viewModel.messageValidationError != nil || viewModel.roomActionError != nil || viewModel.roomActionSuccess != nil },
+            set: { if !$0 { viewModel.messageValidationError = nil; viewModel.roomActionError = nil; viewModel.roomActionSuccess = nil } }
         )) {
-            Button("Tamam", role: .cancel) { viewModel.messageValidationError = nil }
+            Button("Tamam", role: .cancel) {
+                viewModel.messageValidationError = nil
+                viewModel.roomActionError = nil
+                viewModel.roomActionSuccess = nil
+            }
         } message: {
-            Text(viewModel.messageValidationError ?? "")
+            Text(viewModel.roomActionError ?? viewModel.messageValidationError ?? viewModel.roomActionSuccess ?? "")
         }
         .overlay(alignment: .bottomLeading) {
             if viewModel.showMentionList {
@@ -662,10 +675,18 @@ struct ChatView: View {
         .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
     }
 
+    private func returnHomeAfterRoomClosed() {
+        viewModel.disconnectFromWebSocket()
+        // A closed room must never schedule another five-minute closure.
+        Task { await viewModel.leaveRoomViewersIfNeeded(reason: "room_closed") }
+        dismiss()
+        NotificationCenter.default.post(name: .roomClosedReturnHome, object: nil)
+    }
+
     private func leaveChat() {
         Task {
-            await viewModel.endRoomIfNeededBeforeExit()
             viewModel.showExitConfirmation = false
+            guard await viewModel.endRoomIfNeededBeforeExit() else { return }
             interstitialAdManager.present {
                 dismiss()
             }

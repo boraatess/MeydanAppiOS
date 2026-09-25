@@ -98,7 +98,7 @@ struct PersonalInfoView: View {
                         VStack(spacing: 20) {
                             InfoEditField(label: "Ad Soyad", value: $viewModel.name, isEditing: isEditing)
                             InfoEditField(label: "Kullanıcı Adı", value: $viewModel.username, isEditing: isEditing)
-                            InfoEditField(label: "Biyografi", value: $viewModel.bio, isEditing: isEditing, isMultiline: true)
+                            InfoEditField(label: "Biyografi", value: $viewModel.bio, isEditing: isEditing, isMultiline: true, characterLimit: PersonalInfoViewModel.bioCharacterLimit)
                             BirthDateField(
                                 label: "Doğum Tarihi",
                                 value: $viewModel.birthDate,
@@ -220,6 +220,16 @@ struct PersonalInfoView: View {
         @Binding var value: String
         let isEditing: Bool
         var isMultiline: Bool = false
+        var characterLimit: Int?
+
+        private var limitedValue: Binding<String> {
+            Binding(
+                get: { value },
+                set: { newValue in
+                    value = characterLimit.map { String(newValue.prefix($0)) } ?? newValue
+                }
+            )
+        }
         
         var body: some View {
             VStack(alignment: .leading, spacing: 8) {
@@ -230,10 +240,10 @@ struct PersonalInfoView: View {
                 Group {
                     if isEditing {
                         if isMultiline {
-                            TextEditor(text: $value)
+                            TextEditor(text: limitedValue)
                                 .font(.manrope(.medium, size: 16))
                                 .foregroundColor(.white)
-                                .frame(minHeight: 100)
+                                .frame(height: 120)
                                 .padding(12)
                                 .scrollContentBackground(.hidden)
                                 .background(Color.white.opacity(0.08))
@@ -249,6 +259,17 @@ struct PersonalInfoView: View {
                                         .fill(Color.white.opacity(0.08))
                                 )
                         }
+                    } else if isMultiline {
+                        ScrollView {
+                            Text(value)
+                                .font(.manrope(.medium, size: 16))
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .frame(height: 120)
+                        .padding(12)
+                        .background(Color.white.opacity(0.05))
+                        .cornerRadius(16)
                     } else {
                         Text(value)
                             .font(.manrope(.medium, size: 16))
@@ -261,6 +282,17 @@ struct PersonalInfoView: View {
                                 RoundedRectangle(cornerRadius: 16)
                                     .fill(Color.white.opacity(0.05))
                             )
+                    }
+                }
+                if isEditing, let characterLimit {
+                    Text("\(value.count)/\(characterLimit)")
+                        .font(.manrope(.regular, size: 12))
+                        .foregroundColor(value.count >= characterLimit ? .orange : .gray)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    if value.count >= characterLimit {
+                        Text("Biyografi en fazla \(characterLimit) karakter olabilir.")
+                            .font(.manrope(.regular, size: 12))
+                            .foregroundColor(.orange)
                     }
                 }
             }

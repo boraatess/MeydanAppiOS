@@ -15,12 +15,18 @@ class ChatViewModel: ObservableObject {
     // RTDB properties
     private var messagesHandle: DatabaseHandle?
     private var roomStatusHandle: DatabaseHandle?
+    private var connectionTask: Task<Void, Never>?
+    @Published var joinRoomError: String?
+    @Published private(set) var isJoiningRoom = false
+    @Published private(set) var isJoinedToRoom = false
     private var currentUserId = ""
     @Published private var currentUsername = ""
     private var currentUserAvatar: String?
     private var isLoadingCurrentUser = false
     private var hasJoinedRoomViewers = false
     private var hasLeftRoomViewers = false
+    private var isLeavingRoomViewers = false
+    private var hasScheduledRoomClosure = false
     let roomId: String
 
     private var dbRef: DatabaseReference? {
@@ -80,6 +86,9 @@ class ChatViewModel: ObservableObject {
     // Çıkış onayı popup'ının görünürlüğünü kontrol eder.
     @Published var showExitConfirmation = false
     @Published var isEndingRoom = false
+    @Published var roomActionError: String?
+    @Published var roomActionSuccess: String?
+    @Published private(set) var isBanningUser = false
     
     // Yayından çıkarılma alert'inin görünürlüğünü kontrol eder.
     @Published var showKickAlert = false
@@ -199,27 +208,34 @@ class ChatViewModel: ObservableObject {
         }
     }
 
-    func endRoomIfNeededBeforeExit() async {
-        guard !isEndingRoom else { return }
+    func endRoomIfNeededBeforeExit() async -> Bool {
+        guard !isEndingRoom else { return false }
+        roomActionError = nil
 
         isEndingRoom = true
         defer { isEndingRoom = false }
 
         await loadCurrentUserIfNeeded()
         guard hasValidRoomId else {
-            print("DEBUG: Odadan çıkış viewer isteği atlanıyor; roomId boş. roomId=\(roomId)")
-            return
+            roomActionError = "Oda bilgisi bulunamadı."
+            return false
         }
 
-        if isCurrentUserRoomOwner {
+        guard !currentUserId.isEmpty else {
+            roomActionError = "Kullanıcı bilgileriniz doğrulanamadı. Lütfen tekrar deneyin."
+            return false
+        }
+        if isCurrentUserRoomOwner && !showRoomEndedInfo && !hasScheduledRoomClosure {
             do {
                 _ = try await RoomService.shared.scheduleRoomClosure(id: roomId)
+                hasScheduledRoomClosure = true
             } catch {
-                print("DEBUG: Oda kapanış sayacı başlatılamadı: \(error.localizedDescription)")
+                roomActionError = error.localizedDescription
+                return false
             }
         }
 
-        await leaveRoomViewersIfNeeded(reason: "confirmed_exit")
+        return await leaveRoomViewersIfNeeded(reason: "confirmed_exit")
     }
     
     func connectToWebSocket() {
@@ -241,53 +257,73 @@ class ChatViewModel: ObservableObject {
             return
         }
 
-        Task {
+        guard connectionTask == nil, !isJoinedToRoom else { return }
+        joinRoomError = nil
+        connectionTask = Task {
+            defer { connectionTask = nil }
             await loadCurrentUserIfNeeded()
-            await joinRoomViewers()
-            listenForMessages()
-            listenForRoomStatus()
+            guard !Task.isCancelled else { return }
+            // Keep status updates available even if the join request is rejected for a closed room.
+            if roomStatusHandle == nil { listenForRoomStatus() }
+            guard await joinRoomViewers(), !Task.isCancelled else { return }
+            if messagesHandle == nil { listenForMessages() }
         }
     }
 
-    private func joinRoomViewers() async {
+    private func joinRoomViewers() async -> Bool {
         guard hasValidRoomId else {
-            print("DEBUG: join-room-viewers atlanıyor; roomId boş. roomId=\(roomId)")
-            return
+            joinRoomError = "Oda bilgisi bulunamadı."
+            return false
         }
 
+        isJoiningRoom = true
+        defer { isJoiningRoom = false }
         do {
             print("DEBUG: join-room-viewers çağrılıyor. roomId=\(roomId)")
             _ = try await RoomService.shared.joinRoomViewers(id: roomId)
             hasJoinedRoomViewers = true
             hasLeftRoomViewers = false
+            isJoinedToRoom = true
+            if Task.isCancelled {
+                await leaveRoomViewersIfNeeded(reason: "cancelled_join")
+                return false
+            }
+            return true
         } catch {
-            print("DEBUG: Odaya viewer olarak katılma isteği başarısız: \(error.localizedDescription)")
+            if !Task.isCancelled && !showRoomEndedInfo { joinRoomError = error.localizedDescription }
+            return false
         }
     }
 
-    func leaveRoomViewersIfNeeded(reason: String) async {
+    @discardableResult
+    func leaveRoomViewersIfNeeded(reason: String) async -> Bool {
         guard hasValidRoomId else {
-            print("DEBUG: leave-room-viewers atlanıyor; roomId boş. reason=\(reason), roomId=\(roomId)")
-            return
+            roomActionError = "Oda bilgisi bulunamadı."
+            return false
         }
 
-        guard !hasLeftRoomViewers else {
-            print("DEBUG: leave-room-viewers tekrar atlanıyor. reason=\(reason), roomId=\(roomId)")
-            return
-        }
+        guard hasJoinedRoomViewers, !hasLeftRoomViewers else { return true }
+        guard !isLeavingRoomViewers else { return false }
+        isLeavingRoomViewers = true
+        defer { isLeavingRoomViewers = false }
 
         do {
             print("DEBUG: leave-room-viewers çağrılıyor. reason=\(reason), roomId=\(roomId), joined=\(hasJoinedRoomViewers)")
             _ = try await RoomService.shared.leaveRoomViewers(id: roomId)
             hasLeftRoomViewers = true
             hasJoinedRoomViewers = false
+            isJoinedToRoom = false
+            return true
         } catch {
-            print("DEBUG: leave-room-viewers başarısız. reason=\(reason), error=\(error.localizedDescription)")
+            roomActionError = error.localizedDescription
+            return false
         }
     }
     
     func disconnectFromWebSocket() {
         print("RTDB listener kapatılıyor...")
+        connectionTask?.cancel()
+        isJoinedToRoom = false
         guard let dbRef else { return }
 
         if let handle = messagesHandle {
@@ -297,6 +333,8 @@ class ChatViewModel: ObservableObject {
             dbRef.child("rooms").child(roomId).child("status").removeObserver(withHandle: handle)
         }
 
+        messagesHandle = nil
+        roomStatusHandle = nil
         stopClosingCountdown()
     }
     
@@ -363,12 +401,13 @@ class ChatViewModel: ObservableObject {
     private func handleRoomStatus(state: String, closeDeadline: TimeInterval?, closedBy: String?) {
         switch state.lowercased() {
         case "closing":
-            guard !isCurrentUserRoomOwner else { return }
             showRoomEndedInfo = false
             roomClosedByUsername = closedBy
             isRoomClosing = true
             startClosingCountdown(deadlineMillis: closeDeadline)
         case "active":
+            hasScheduledRoomClosure = false
+            showRoomEndedInfo = false
             isRoomClosing = false
             roomClosedByUsername = nil
             stopClosingCountdown()
@@ -413,7 +452,7 @@ class ChatViewModel: ObservableObject {
     }
 
     private func showRoomEndedInfoIfNeeded() {
-        guard !isCurrentUserRoomOwner else { return }
+        joinRoomError = nil
         showInviteSheet = false
         showParticipantsSheet = false
         showCreatePollSheet = false
@@ -429,7 +468,7 @@ class ChatViewModel: ObservableObject {
     
     func sendMessage() {
         let messageText = currentMessageText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !messageText.isEmpty else { return }
+        guard !messageText.isEmpty, isJoinedToRoom, !showRoomEndedInfo else { return }
         messageValidationError = ContentFilter.warning(for: messageText)
         guard messageValidationError == nil else { return }
         currentMessageText = ""
@@ -543,6 +582,36 @@ class ChatViewModel: ObservableObject {
             self.showReportSheet = true
         }
     }
+    func canBanUser(_ message: Message) -> Bool {
+        guard isCurrentUserRoomOwner,
+              let targetId = message.senderId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !targetId.isEmpty else { return false }
+        return targetId != currentUserId && targetId != roomOwnerUserId && !message.isCurrentUser
+    }
+
+    func banUser(_ message: Message) async {
+        guard !isBanningUser else { return }
+        roomActionError = nil
+        roomActionSuccess = nil
+        guard canBanUser(message), hasValidRoomId, !showRoomEndedInfo,
+              let targetId = message.senderId?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            roomActionError = "Bu kullanıcıyı odadan çıkaramazsınız. İşlemi yalnızca oda sahibi yapabilir."
+            return
+        }
+        isBanningUser = true
+        defer { isBanningUser = false }
+        do {
+            let response = try await RoomService.shared.banUser(
+                request: BanRoomUserRequest(roomId: roomId, userIdToBan: targetId)
+            )
+            participants.removeAll { $0.userId == targetId }
+            roomActionSuccess = response.message?.isEmpty == false
+                ? response.message : "Kullanıcı odadan çıkarıldı ve odaya erişimi engellendi."
+        } catch {
+            roomActionError = error.localizedDescription
+        }
+    }
+
     func muteUser(author: String) { print("Muting user: \(author)") }
     
     func inviteUser(username: String) {

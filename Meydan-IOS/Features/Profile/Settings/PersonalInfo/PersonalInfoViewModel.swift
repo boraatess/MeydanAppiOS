@@ -6,6 +6,7 @@ import UIKit
 class PersonalInfoViewModel: ObservableObject {
     @Published var name: String = ""
     @Published var username: String = ""
+    static let bioCharacterLimit = 300
     @Published var bio: String = ""
     @Published var birthDate: String = ""
     @Published var profileImageURL: String = ""
@@ -114,6 +115,10 @@ class PersonalInfoViewModel: ObservableObject {
     }
     
     func updateProfile() async {
+        guard bio.count <= Self.bioCharacterLimit else {
+            errorMessage = "Biyografi en fazla \(Self.bioCharacterLimit) karakter olabilir."
+            return
+        }
         errorMessage = [name, username, bio].compactMap { ContentFilter.warning(for: $0) }.first
         guard errorMessage == nil else { return }
         isLoading = true

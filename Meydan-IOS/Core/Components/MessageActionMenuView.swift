@@ -5,16 +5,15 @@ struct MessageActionMenuView: View {
     let currentUserRole: AuthorRole
     
     var body: some View {
-        if let _ = viewModel.selectedMessage {
+        if let message = viewModel.selectedMessage {
             VStack(spacing: 0) {
-                if currentUserRole == .moderator || currentUserRole == .chatOwner {
-                    // Moderatör / Yayın Sahibi Menüsü
+                if viewModel.canBanUser(message) {
+                    // Yalnızca oda sahibi başka bir kullanıcıyı odadan çıkarabilir.
                     MessageActionButton(iconName: "xmark.circle", text: "Yayından Çıkar") {
                         viewModel.dismissMessageActions()
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            viewModel.showKickAlert = true
-                        }
+                        Task { await viewModel.banUser(message) }
                     }
+                    .disabled(viewModel.isBanningUser)
                     Divider().background(Color.white.opacity(0.1))
                     MessageActionButton(iconName: "exclamationmark.circle", text: "Şikayet Et") {
                         viewModel.reportMessage(viewModel.selectedMessage!)

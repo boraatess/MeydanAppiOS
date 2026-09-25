@@ -24,6 +24,7 @@ protocol RoomServiceProtocol: Sendable {
     func fetchRooms(forUserId userId: String) async throws -> UserRoomsResponse
     func fetchRoom(id: String) async throws -> RoomResponse
     func inviteUser(request: RoomInviteRequest) async throws -> RoomActionResponse
+    func banUser(request: BanRoomUserRequest) async throws -> RoomActionResponse
     func notifyMention(request: RoomMentionNotificationRequest) async throws -> RoomActionResponse
     func fetchExplore(page: Int, limit: Int) async throws -> RoomExploreResponse
     func createPoll(request: CreatePollRequest) async throws -> CreatePollResponse
@@ -132,6 +133,11 @@ final class RoomService: RoomServiceProtocol {
             parameters: Optional<EmptyParameters>.none
         )
         return response.room
+    }
+
+    func banUser(request: BanRoomUserRequest) async throws -> RoomActionResponse {
+        let url = "\(baseURL)/rooms/ban-user"
+        return try await performRequest(url: url, method: .post, parameters: request)
     }
 
     func inviteUser(request: RoomInviteRequest) async throws -> RoomActionResponse {
@@ -274,20 +280,24 @@ final class RoomService: RoomServiceProtocol {
                     switch response.result {
                     case .success(let data):
                         do {
-                            let decoded = try JSONDecoder().decode(T.self, from: data)
+                            // Action endpoints may acknowledge success with HTTP 204 and no JSON body.
+                            let responseData = data.isEmpty && response.response?.statusCode == 204
+                                ? Data("{}".utf8) : data
+                            let decoded = try JSONDecoder().decode(T.self, from: responseData)
                             continuation.resume(returning: decoded)
                         } catch {
                             print("ERROR: Decoding error for \(T.self): \(error)")
                             continuation.resume(throwing: NetworkError.serverError(message: "Sunucu yanıtı çözümlenemedi."))
                         }
                     case .failure(let afError):
-                        continuation.resume(throwing: Self.mapError(data: response.data, fallback: afError.localizedDescription))
+                        continuation.resume(throwing: Self.mapError(data: response.data, statusCode: response.response?.statusCode, fallback: afError.localizedDescription))
                     }
                 }
         }
     }
 
-    nonisolated private static func mapError(data: Data?, fallback: String) -> Error {
+    nonisolated private static func mapError(data: Data?, statusCode: Int?, fallback: String) -> Error {
+        let fallback = RoomHTTPErrorMessage.message(statusCode: statusCode, networkFallback: fallback)
         guard let data else {
             return NetworkError.serverError(message: fallback)
         }
@@ -299,10 +309,12 @@ final class RoomService: RoomServiceProtocol {
         }
 
         if let errorResponse = try? JSONDecoder().decode(ErrorResponse.self, from: data) {
-            return NetworkError.serverError(message: errorResponse.message ?? errorResponse.error ?? fallback)
+            let message = [errorResponse.message, errorResponse.error]
+                .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .first { !$0.isEmpty }
+            return NetworkError.serverError(message: message ?? fallback)
         }
 
-        let raw = String(data: data, encoding: .utf8) ?? fallback
-        return NetworkError.serverError(message: raw)
+        return NetworkError.serverError(message: fallback)
     }
 }

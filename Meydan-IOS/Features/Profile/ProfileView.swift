@@ -191,13 +191,16 @@ struct ProfileView: View {
                 }
             )
         }
-        .alert("Yayın başlatılamadı", isPresented: Binding(
-            get: { viewModel.startRoomErrorMessage != nil },
-            set: { if !$0 { viewModel.startRoomErrorMessage = nil } }
+        .alert(viewModel.deleteRoomErrorMessage != nil ? "Yayın silinemedi" : "Yayın başlatılamadı", isPresented: Binding(
+            get: { viewModel.startRoomErrorMessage != nil || viewModel.deleteRoomErrorMessage != nil },
+            set: { if !$0 { viewModel.startRoomErrorMessage = nil; viewModel.deleteRoomErrorMessage = nil } }
         )) {
-            Button("Tamam", role: .cancel) { viewModel.startRoomErrorMessage = nil }
+            Button("Tamam", role: .cancel) {
+                viewModel.startRoomErrorMessage = nil
+                viewModel.deleteRoomErrorMessage = nil
+            }
         } message: {
-            Text(viewModel.startRoomErrorMessage ?? "")
+            Text(viewModel.deleteRoomErrorMessage ?? viewModel.startRoomErrorMessage ?? "")
         }
         .loadingOverlay(isPresented: $viewModel.isStartingRoom, message: "Yayın açılıyor...")
         .fullScreenCover(item: $chatDestination) { destination in
